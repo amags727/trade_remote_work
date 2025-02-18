@@ -2,9 +2,10 @@
 rm(list = ls())
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','harmonizer')
-lapply(packages, library, character.only = T)
+lapply(packages, function(package){ tryCatch({ library(package, character.only = T)},
+                                             error = function(cond){ install.packages(package);library(package, character.only = T)})})
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-setwd('../1) data/CN8_code_harmonization')
+setwd('../../1) data/CN8_code_harmonization')
 
 # harmonize CN-08 codes  ---------------------------------------------------
 
