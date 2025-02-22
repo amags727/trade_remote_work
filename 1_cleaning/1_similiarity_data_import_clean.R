@@ -51,8 +51,6 @@ similiarity_data =  lapply(countries, function(ctry){
 }) %>% rbindlist()
 write_rds(similiarity_data,'outputs/similiarity_data.rds')
 
-
-
 # Generate GDP and population time series ---------------------------------------------
 vars = c('population','gdp_per_capita')
 
@@ -68,7 +66,7 @@ france_distance_data = read_xls('inputs/dist_cepii.xls') %>%
   mutate(ctry = countrycode(iso_d, 'iso3c', 'iso2c')) %>% 
   filter(iso_o == 'FRA', ctry %in% countries) %>%
   rename(distance_to_france = dist) %>%
-  select(ctry, dist_to_france)
+  select(ctry, distance_to_france)
 
 fwrite(france_distance_data, 'outputs/france_distance_data.csv')
 

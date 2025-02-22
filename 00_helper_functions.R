@@ -1,6 +1,108 @@
 
 
 
+# Table Cleanup ----------------------------------------------------
+model_to_df = function(model){
+  data.frame(regressor = names(model$coefficients)) %>% mutate(
+    year =  as.numeric(str_extract(regressor, '\\d{4}')),
+    coef = as.numeric(model$coefficients),
+    se = as.numeric(summary(model)$se), 
+    p_val = round(summary(model)$coeftable[, "Pr(>|t|)"],3),
+    lb = coef - 1.96*se, ub = coef + 1.96*se)
+}
+
+split_var = function(table, var, replacement){
+  index = grep(var, table, fixed = TRUE)[1]
+  table[index] = gsub(var, replacement[1], table[index])
+  table[index +1] = paste0(replacement[2], table[index +1])
+  return(table)
+}
+insert_column_space <- function(input_string,after_column, og_columns) {
+  # Count the number of '&' characters
+  amp_count <- str_count(input_string, "&")
+  
+  # If there are at least four '&' characters
+  if (amp_count >= after_column) {
+    # Locate the positions of all '&' characters
+    amp_positions <- str_locate_all(input_string, "&")[[1]]
+    
+    # Get the position of the fourth '&'
+    fourth_amp_position <- amp_positions[after_column, 1]
+    
+    # Replace the fourth '&' with '& \hspace{5 pt} &'
+    modified_string <- str_sub(input_string, 1, fourth_amp_position - 1) %>%
+      paste0("& \\hspace{5 pt} &", str_sub(input_string, fourth_amp_position + 1))
+    
+    return(modified_string)
+  }else{
+    input_string = input_string %>% gsub( paste0('\\{',og_columns +1, '\\}'),  paste0('\\{',og_columns+2, '\\}'),. ) %>%
+      gsub( paste0('\\{',og_columns, '\\}'),  paste0('\\{',og_columns+1, '\\}'),. )
+    return(input_string)
+  }
+}
+gen_table_line= function(items,space_after){
+  line_output = paste0(paste(items, collapse = "&"),"\\\\")
+  if (space_after){
+    line_output = paste(line_output, '[1em]')
+  }
+  return(line_output)
+}
+
+format_table = function(model_inputs,label,  coef_names = NA, column_names = NA, custom_rows =NA,  headers = NA,
+                        divisions_before = NA, notes = NA, note_width = .5, output_path = NA, caption = 'NULL'){
+  
+  num_columns = length(model_inputs)
+  custom_block = paste0(", caption = '", caption, "'")
+  if (any(!is.na(coef_names))) custom_block =paste0(custom_block, ', custom.coef.names = coef_names')
+  if (all(is.na(column_names))) column_names = gpaste('(', 1:num_columns, ")")
+  command = paste0('capture.output(texreg(model_inputs, label = paste0("tab:", label),
+            stars = c(0.01, 0.05, 0.1), include.groups = F, include.rsquared = FALSE,
+            custom.model.names = column_names, include.adjrs = FALSE, include.loglik = FALSE,
+            caption.above = T,include.deviance = F, include.pseudors =F, include.aic = FALSE,',custom_block, '))')
+  table = eval(parse(text = command))
+  
+  ### Add custom rows 
+  table = append(table, "[1em]", after = (which(table == "\\hline")[3]-1))
+  if (any(!is.na(custom_rows))){
+    for (i in 1:length(custom_rows)){
+      table = append(table,paste0(paste(custom_rows[[i]], collapse = " & "),"\\\\"),
+                     after = (which(table == "\\hline")[3]-1))
+    }
+  } 
+  ### Insert Divisions for Ease of Reading 
+  if (!is.na(divisions_before)){
+    table[5] = gsub("\\}\\{l", '}{l c', table[5])
+    for (i in 1:length(table)){
+      table[i] = insert_column_space(table[i],divisions_before,num_columns)
+    }}
+  ### Add Headers 
+  if (!is.na(headers)){table<- append(table, headers, after = 6)}
+  
+  
+  ## UPDATE THE NOTES
+  if (any(!is.na(notes))){
+    notes_index = grep("^{***}p", table, fixed = T)[1]
+    note_base = table[notes_index]
+    multi_col = regmatches(note_base, regexpr("\\\\multicolumn\\{\\d+\\}\\{l\\}", note_base))
+    p_vals =  gsub("\\\\multicolumn\\{\\d+\\}\\{l\\}\\{\\\\scriptsize\\{", "", note_base) %>% 
+      gsub("\\}\\}$", "", .)
+    note_line = paste0(multi_col,'{\\parbox{',note_width, 
+                       '\\linewidth}{\\scriptsize\\\\ \\vspace{5 pt}', 
+                       p_vals, " ", notes, '}}}')
+    table[notes_index] = note_line
+  }
+  
+  
+  
+  
+  ### Update so that the table actually shows up where it's supposed to
+  table[2] = "\\begin{table}[h]"    
+  if (is.na(output_path)){
+    return(table)
+  }else{
+    writeLines(table, output_path)
+  }
+}
 
 # dummy variable makers ---------------------------------------------------
 
@@ -61,6 +163,50 @@ simulate_continuous_vars = function(data, data_dummy, group_vars, interest_vars)
 
 
 # misc --------------------------------------------------------------------
+expand = function(..., names){
+  input = list(...)
+  expand.grid(rev(input), stringsAsFactors = F) %>%
+    select(rev(everything())) %>% rename_with(~names) %>% as.data.table()
+}
+gpaste <- function(..., order = NA) {
+  # Get the list of arguments as input
+  args <- list(...)
+  
+  # Create a data frame with all combinations of the arguments
+  if (any(is.na(order))){
+    
+    combinations <- expand.grid(rev(args), stringsAsFactors = FALSE)
+    combinations = combinations[, rev(seq_along(combinations))]
+  }else{
+    rev_order = rep(0,length(order))
+    for (i in seq_along(order)){
+      rev_order[i] = which(order == i)[1]
+    }
+    combinations = expand.grid(rev(args[order]), stringsAsFactors = F)
+    combinations = combinations[, rev(rev_order)]
+  }
+  # Concatenate the combinations row-wise
+  output <- apply(combinations, 1, paste0, collapse = "")
+  return(output)
+}
+import_parquet = function(file, col_select = NULL, data_table = T){
+  if (!is.null(col_select)){
+    file = read_parquet(file, col_select = col_select)
+  } else{
+    file = read_parquet(file)
+  }
+  
+  if (data_table) file = as.data.table(file)
+  return(file)
+}
+import_csv = function(file, col_select = NULL, char_vars = NULL){
+  if(!is.null(col_select)) col_select = paste0(", select = c('", paste(col_select, collapse = "','"), "')")
+  if(!is.null(char_vars)) char_vars =  paste0(", colClasses = list(character=  c('", 
+                                              paste(char_vars, collapse = "','"), "'))")
+  command = paste0("fread('",file,"'", col_select, char_vars, ")")
+  return(eval(parse(text = command)))
+}
+
 exclude_from = function(base_list, exclude_elements){
   return(base_list[!base_list %in% exclude_elements])
 }
@@ -110,23 +256,30 @@ replicate_var = function(data, data_dummy, var, discrete){
   return(data_dummy)
 }
 
-unbalanced_lag = function(data,id_var, time_var, value_var, lag_amount){
+unbalanced_lag = function(data,id_var,time_var, value_vars, lag_amounts){
   data = as.data.table(data)
-  data[, id:= .GRP , by = mget(id_var)]
-  
-  data[, `:=`(value = get(value_var), time = get(time_var), time_lag = get(time_var)+ lag_amount)]
-  data = merge(data, data[, .(time_lag, id, value)] %>% rename(value_lag = value),
-               by.x = c('id', 'time'), by.y = c('id', 'time_lag'), all.x = T)
-  
-  if (lag_amount >0){
-    data[, paste0(value_var,"_lag", lag_amount) := value_lag]
-  }else{
-    data[, paste0(value_var,"_lead", (-1)*lag_amount) := value_lag]
-  }
-  extra = c('value', 'value_lag', 'time', 'time_lag', 'id')
-  data[, (extra):= NULL]
+  for (value_var  in value_vars){for (lag_amount in lag_amounts){
+    data[, id := get(id_var[1])]
+    if (length(id_var) > 1){
+      for (i in 2:length(id_var)){data[, id := paste(id, get(id_var[i]))] }  
+    } 
+    data[, `:=`(value = get(value_var),
+                time = get(time_var),
+                time_lag = get(time_var) +lag_amount)]
+    
+    data = merge(data, data[, .(time_lag, id, value)] %>% rename(value_lag= value),
+                 by.x = c('id','time'), by.y = c('id', 'time_lag'), all.x = T) 
+    
+    if (lag_amount > 0) {
+      data[, paste0(value_var,"_",'lag',lag_amount) := value_lag]
+    }else{
+      data[, paste0(value_var,"_",'lead',-1*lag_amount) := value_lag] 
+    }
+    extra = c('value','value_lag', 'time', 'time_lag', 'id')
+    data[, (extra) := NULL]
+  }}
+  return(data)
 }
-
 standardize = function(x){
   x = (x - mean(x,na.rm =T)) / sd(x, na.rm = T)
 }
