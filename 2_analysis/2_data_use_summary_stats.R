@@ -16,6 +16,7 @@ dummy_version = T
 linkedin = import_parquet('1) data/14_WRDS_output/linkedin/french_affiliated_firm_roles_collapsed_clean.parquet') %>%
   select(-c(rcid, `__index_level_0__`)) 
 
+
 ## if necessary anonymize linkedin data 
 if (dummy_version){
   linkedin = merge(linkedin, data.table(firmid = linkedin[!duplicated(firmid) & has_siren][['firmid']]) %>%
@@ -30,7 +31,37 @@ data =data.frame(firmid = '2', exim = 1, ctry = c(rep('GB', 4), "HK"), year = c(
   mutate(new_market = is.na(deflated_value_lag1),
          market_entry_failure = case_when((!new_market| year == max(year,na.rm = T)) ~ NA, is.na(deflated_value_lead1) ~ T, T~F))
       
-
+## generate age data
+{
+  #admin_birth_data = import_csv('../../IWH/data/2_patent_tm_scraping/1_raw/1_StockUniteLegaleHistorique_utf8.csv', char_vars = 'siren',
+  #                col_select = c("siren", "dateDebut", "etatAdministratifUniteLegale")) %>%
+  #  .[, `:=`(start_year = year(dateDebut), firmid = siren)] %>%
+  #  .[etatAdministratifUniteLegale != 'C' & !is.na(start_year) & start_year <= 2024 & start_year > 1900]  %>%
+  #  .[, .(birth_year_admin = min(start_year)), by = firmid]
+  #write_parquet(admin_birth_data, '1) data/14_admin_birth_data.parquet')
+  birth_data = import_parquet('1) data/14_admin_birth_data.parquet')  %>% 
+    
+    merge(import_csv('1) data/3_bs_br_data.csv', char_vars =  c('firmid'), col_select = c('year', 'firmid')) %>%
+            .[!is.na(year) & !is.na(firmid)] %>%
+            .[,.(birth_year_BS = min(year)), by = firmid] %>%
+            .[birth_year_BS == 1994, birth_year_BS := NA] #94 is the first year of our data 
+          , all = T) %>%
+    
+    merge(import_csv('1) data/9_customs_cleaned.csv', char_vars =  c('firmid'), col_select = c('year', 'firmid')) %>%
+            .[!is.na(year) & !is.na(firmid)] %>%
+            .[,.(birth_year_customs = min(year)), by = firmid] %>%
+            .[birth_year_customs == 1993, birth_year_customs := NA] #93 is the first year of our data 
+          , all = T) %>%
+    
+    .[,birth_year := case_when(
+      birth_year_BS <= birth_year_customs ~ birth_year_BS,
+      !is.na(birth_year_BS) & is.na(birth_year_customs) ~ birth_year_BS,
+      T ~ birth_year_admin)] %>% 
+    
+    .[,type := case_when(birth_year == birth_year_BS ~ "BS",
+                         birth_year == birth_year_admin ~ "admin",
+                         T ~ "missing")]
+  }
   
   
 
