@@ -32,61 +32,6 @@ raw_dir = 'C:/Users/Public/1. Microprod/0. Raw data processing/Data/'
 # 00) parameters / helper functions---------------------------------------------------------
 firm_id_threshold = 4; set.seed(1)
 
-simulate_discrete_vars = function(data, data_dummy, group_vars, interest_vars){
-  
-  # use the group vars to generate unique ids fro each group
-  group_keys = data[, ..group_vars] %>% unique() %>% mutate(group_code = 1:nrow(.))
-  data = merge(data, group_keys)
-  data_dummy = merge(data_dummy, group_keys)
-  
-  # for each group use the joint empirical distribution of values to generate 
-  data_dummy = lapply(1:nrow(group_keys), function(i){
-    temp_dummy = data_dummy[group_code == i]; num_in_dummy = nrow(temp_dummy)
-    if (num_in_dummy > 0){
-      temp = data[group_code == i, ..interest_vars]; num_in_temp = nrow(temp);
-      temp_dummy = cbind(temp_dummy,temp[sample(1:num_in_temp, num_in_dummy, T)])
-    }
-    return(temp_dummy)
-  }) %>% rbindlist(fill =T, use.names = T)
-  data[, group_code := NULL]; data_dummy[, group_code := NULL]
-  return(data_dummy)
-}
-
-simulate_continuous_vars = function(data, data_dummy, group_vars, interest_vars){
-  
-  # use the group vars to generate unique ids fro each group
-  group_keys = data[, ..group_vars] %>% unique() %>% mutate(group_code = 1:nrow(.))
-  data = merge(data, group_keys)
-  data_dummy = merge(data_dummy, group_keys, by = group_vars)
-  
-  # generate the mins and maxes for the whole dataset, these will serve as bounds
-  # for the simulation draws
-  mins = apply(data[,..interest_vars],2, NA_min); maxes = apply(data[,..interest_vars],2, NA_max)
-  
-  # for each group generate the multivariate normal distribution of the variables of interest 
-  data_dummy = lapply(1:nrow(group_keys), function(i){
-    temp_dummy = data_dummy[group_code == i]; num_in_dummy = nrow(temp_dummy)
-    if (num_in_dummy > 0){
-      temp_dummy = tryCatch({
-        temp = data[group_code == i, ..interest_vars] 
-        ## ensure covariance matrix is positive definite
-        noise = rnorm(nrow(temp)*length(interest_vars),0, 1e-6) %>% matrix(., nrow = nrow(temp))
-        noise = noise - min(noise);temp = temp+ noise
-        cov_matrix = cov(temp, use = 'pairwise.complete.obs') %>% nearPD()
-        cov_matrix = cov_matrix$mat
-        
-        # simulate data 
-        draws = rtmvnorm(num_in_dummy, colMeans(temp, na.rm = T),cov_matrix,mins,maxes)
-        temp_dummy[,(interest_vars) := as.data.table(draws)] 
-        return(temp_dummy)
-      }, error = function(e){return(temp_dummy)})
-    }
-    return(temp_dummy)
-  }) %>% rbindlist(fill =T, use.names = T)
-  
-return(data_dummy)
-}
-
 
 
 # 0)  -------------------------------------------------------------------------

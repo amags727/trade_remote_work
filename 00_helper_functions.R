@@ -107,11 +107,13 @@ format_table = function(model_inputs,label,  coef_names = NA, column_names = NA,
 # dummy variable makers ---------------------------------------------------
 
 simulate_discrete_vars = function(data, data_dummy, group_vars, interest_vars){
-  
+  if("group_code" %in% names(data)){
+    data = data %>% select(-group_code)
+  }
   # use the group vars to generate unique ids fro each group
-  group_keys = data[, ..group_vars] %>% unique() %>% mutate(group_code = 1:nrow(.))
-  data = merge(data, group_keys)
-  data_dummy = merge(data_dummy, group_keys)
+  group_keys = data[, ..group_vars] %>% unique() %>% mutate(group_code = 1:nrow(.)) 
+  data = merge(data, group_keys, by = group_vars)
+  data_dummy = merge(data_dummy, group_keys, by = group_vars)
   
   # for each group use the joint empirical distribution of values to generate 
   data_dummy = lapply(1:nrow(group_keys), function(i){
@@ -127,10 +129,12 @@ simulate_discrete_vars = function(data, data_dummy, group_vars, interest_vars){
 }
 
 simulate_continuous_vars = function(data, data_dummy, group_vars, interest_vars){
-  
+  if("group_code" %in% names(data)){
+    data = data %>% select(-group_code)
+  }
   # use the group vars to generate unique ids fro each group
   group_keys = data[, ..group_vars] %>% unique() %>% mutate(group_code = 1:nrow(.))
-  data = merge(data, group_keys)
+  data = merge(data, group_keys, by = group_vars)
   data_dummy = merge(data_dummy, group_keys, by = group_vars)
   
   # generate the mins and maxes for the whole dataset, these will serve as bounds
@@ -206,6 +210,53 @@ import_csv = function(file, col_select = NULL, char_vars = NULL){
   command = paste0("fread('",file,"'", col_select, char_vars, ")")
   return(eval(parse(text = command)))
 }
+
+import_file <- function(filepath, col_select = NULL, data_table = T, char_vars = NULL){
+  if (grepl("\\.parquet$", filepath, ignore.case = TRUE)) {
+    file <- import_parquet(filepath, col_select = col_select, data_table = T)
+    } else if (grepl("\\.xlsx$|\\.xls$", filepath, ignore.case = TRUE)) {
+    file <- read_excel(filepath)
+  } else if (grepl("\\.csv$", filepath, ignore.case = TRUE)) {
+    file <- import_csv(filepath, col_select = col_select, char_vars = char_vars)
+  } else if (grepl("\\.rds$", filepath, ignore.case = TRUE)) {
+    file <- readRDS(filepath)
+  } else {
+    stop("Unsupported file type")
+  }
+  return(file)
+}
+copy_directory <- function(from_dir, to_dir) {
+  # Ensure the source directory exists
+  if (!dir.exists(from_dir)) {
+    stop("Source directory does not exist.")
+  }
+  
+  # Create the destination directory if it doesn't exist
+  if (!dir.exists(to_dir)) {
+    dir.create(to_dir, recursive = TRUE)
+  }
+  
+  # List all files and directories (recursive)
+  files <- list.files(from_dir, full.names = TRUE, recursive = TRUE)
+  
+  # Recreate subdirectory structure in the destination folder
+  sub_dirs <- unique(dirname(files))
+  sub_dirs <- gsub(from_dir, to_dir, sub_dirs)  # Adjust paths to match new root
+  lapply(sub_dirs, dir.create, recursive = TRUE, showWarnings = FALSE)
+  
+  # Copy each file while preserving its subdirectory structure
+  dest_files <- gsub(from_dir, to_dir, files)  # Adjust paths for new destination
+  file.copy(files, dest_files, overwrite = TRUE)
+  
+  print("Directory copied successfully with all subfolders and files.")
+}
+
+
+
+
+
+
+
 
 exclude_from = function(base_list, exclude_elements){
   return(base_list[!base_list %in% exclude_elements])
