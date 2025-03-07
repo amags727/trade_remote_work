@@ -48,7 +48,7 @@ gen_table_line= function(items,space_after){
   return(line_output)
 }
 
-format_table = function(model_inputs,label,  coef_names = NA, column_names = NA, custom_rows =NA,  headers = NA,
+format_table = function(model_inputs,label, coef_names = NA, column_names = NA, custom_rows =NA,  headers = NA,
                         divisions_before = NA, notes = NA, note_width = .5, output_path = NA, caption = 'NULL'){
   
   num_columns = length(model_inputs)
@@ -97,6 +97,43 @@ format_table = function(model_inputs,label,  coef_names = NA, column_names = NA,
   
   ### Update so that the table actually shows up where it's supposed to
   table[2] = "\\begin{table}[h]"    
+  if (is.na(output_path)){
+    return(table)
+  }else{
+    writeLines(table, output_path)
+  }
+}
+format_summary_table = function(base_table, divisions_before = NA, headers = NA,
+                                notes = NA, note_width = .5,output_path =NA){
+  kable(base_table, format = "latex", booktabs = TRUE) %>% cat(., file = "table.tex")
+  table = readLines('table.tex')  
+  file.remove('table.tex')
+  ### adjust the alignment and note the number of data cols 
+  table[2] =  gsub("\\\\begin\\{tabular\\}\\{l", "", table[2]) %>%
+    gsub('l', 'c',.) %>% paste0("\\begin{tabular}{l",.) 
+  num_data_cols = str_count(table[2], "c")
+  
+  ## add a division between columns to enhance readability if necessary
+  if (!is.na(divisions_before)){
+    table[2] = gsub("\\}\\{l", '}{l c', table[2])
+    for (i in 1:length(table)){
+      table[i] = insert_column_space(table[i],divisions_before,num_data_cols)
+    }}
+  
+  ## add headers if necessary 
+  if (!is.na(headers)){table<- append(table, headers, after = 3)}
+  
+  ## add notes if necessary 
+  if (!is.na(notes)){
+    table = append(
+      table,paste0("\\multicolumn{",
+                   num_data_cols + 1 + length(divisions_before),
+                   "}{l}{\\parbox{",note_width,
+                   "\\linewidth}{\\scriptsize \\\\ \\vspace{5 pt}", notes, "}}}"),
+      after = length(table)-1)
+  }
+  
+  ## export if necessary 
   if (is.na(output_path)){
     return(table)
   }else{
@@ -172,10 +209,10 @@ expand = function(..., names){
   expand.grid(rev(input), stringsAsFactors = F) %>%
     select(rev(everything())) %>% rename_with(~names) %>% as.data.table()
 }
-gpaste <- function(..., order = NA) {
+gpaste <- function(..., order = NA, collapse_str = NA, no_expand = F) {
   # Get the list of arguments as input
   args <- list(...)
-  
+  if (!no_expand){
   # Create a data frame with all combinations of the arguments
   if (any(is.na(order))){
     
@@ -191,6 +228,8 @@ gpaste <- function(..., order = NA) {
   }
   # Concatenate the combinations row-wise
   output <- apply(combinations, 1, paste0, collapse = "")
+  }else {output = do.call(paste0, args)}
+  if (!is.na(collapse_str)) output = paste(output, collapse = collapse_str)
   return(output)
 }
 import_parquet = function(file, col_select = NULL, data_table = T){
@@ -213,7 +252,8 @@ import_csv = function(file, col_select = NULL, char_vars = NULL){
 
 import_file <- function(filepath, col_select = NULL, data_table = T, char_vars = NULL){
   if (grepl("\\.parquet$", filepath, ignore.case = TRUE)) {
-    file <- import_parquet(filepath, col_select = col_select, data_table = T)
+    file <- import_parquet(filepath, col_select = col_select, data_table = T) %>%
+      mutate(across(char_vars, ~as.character(.)))
     } else if (grepl("\\.xlsx$|\\.xls$", filepath, ignore.case = TRUE)) {
     file <- read_excel(filepath)
   } else if (grepl("\\.csv$", filepath, ignore.case = TRUE)) {
@@ -262,35 +302,38 @@ exclude_from = function(base_list, exclude_elements){
   return(base_list[!base_list %in% exclude_elements])
 }
 
+# NA_var functions 
+{
 NA_sum = function(x){
-  ifelse(all(is.na(x)), NA, sum(x,na.rm = T))
+  ifelse(all(is.na(x)), NA_real_, sum(x,na.rm = T))
 }
 
 NA_mean = function(x){
-  ifelse(all(is.na(x)), NA, mean(x,na.rm = T))
+  ifelse(all(is.na(x)), NA_real_, mean(x,na.rm = T))
 }
 
 NA_median = function(x){
-  ifelse(all(is.na(x)), NA, median(x,na.rm = T))
+  ifelse(all(is.na(x)), NA_real_, median(x,na.rm = T))
 }
 
 NA_sd = function(x){
-  ifelse(all(is.na(x)), NA, sd(x,na.rm = T))
+  ifelse(all(is.na(x)), NA_real_, sd(x,na.rm = T))
 }
 
 NA_max = function(x){
-  ifelse(all(is.na(x)), NA, max(x,na.rm = T))
+  ifelse(all(is.na(x)), NA_real_, max(x,na.rm = T))
 }
 
 NA_min = function(x){
-  ifelse(all(is.na(x)), NA, min(x,na.rm = T))
+  ifelse(all(is.na(x)), NA_real_, min(x,na.rm = T))
 }
 NA_IQR = function(x){
-  ifelse(all(is.na(x)), NA, IQR(x,na.rm = T))
+  ifelse(all(is.na(x)), NA_real_, IQR(x,na.rm = T))
 }
 
 NA_coef_var = function(x){
   NA_sd(x)/NA_mean(x)
+}
 }
 
 replicate_var = function(data, data_dummy, var, discrete){
