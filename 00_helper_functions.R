@@ -204,10 +204,43 @@ simulate_continuous_vars = function(data, data_dummy, group_vars, interest_vars)
 
 
 # misc --------------------------------------------------------------------
-expand = function(..., names){
+sub_regression = function(...,output_model= F, predicted = F, residuals = F, ssr = F){
+  col_list = list(...)
+  
+  max_length <- max(sapply(col_list, length))
+  
+  # Standardize column lengths by padding with NAs
+  col_list <- lapply(col_list, function(col) {
+    length(col) <- max_length  # Expands or truncates the vector
+    return(col)
+  })
+  df <- as.data.table(do.call(cbind, col_list)) %>% na.omit()
+  
+  if(nrow(df)<= length(col_list)) return(NA_real_) 
+  command = paste0('model = lm(data = df, V1 ~',
+                   gpaste('V',2:length(col_list), collapse_str = "+" ),
+                   ")")
+  eval(parse(text = command))
+  if(output_model) return(model)
+  if(predicted) return(predict(model) %>% as.data.frame() %>% .[,1])
+  if(residuals) return(resid(model))
+  if(ssr) return(sum(resid(model)^2))
+}
+
+expand = function(..., names, order = NULL){
   input = list(...)
-  expand.grid(rev(input), stringsAsFactors = F) %>%
+  if(is.null(order)){
+
+  output = expand.grid(rev(input), stringsAsFactors = F) %>%
     select(rev(everything())) %>% rename_with(~names) %>% as.data.table()
+  }else{
+    rev_order = rep(0,length(order))
+    for (i in seq_along(order)) rev_order[i] = which(order == i)[1]
+    rev_order = length(input) + 1 - rev_order
+    output = expand.grid(rev(input[order]), stringsAsFactors = F)
+    output = output[, rev_order] %>% rename_with(~names) %>% as.data.table()
+  }
+  return(output)
 }
 gpaste <- function(..., order = NA, collapse_str = NA, no_expand = F) {
   # Get the list of arguments as input
@@ -220,11 +253,10 @@ gpaste <- function(..., order = NA, collapse_str = NA, no_expand = F) {
     combinations = combinations[, rev(seq_along(combinations))]
   }else{
     rev_order = rep(0,length(order))
-    for (i in seq_along(order)){
-      rev_order[i] = which(order == i)[1]
-    }
+    for (i in seq_along(order)) rev_order[i] = which(order == i)[1]
+    rev_order = length(args) + 1 - rev_order
     combinations = expand.grid(rev(args[order]), stringsAsFactors = F)
-    combinations = combinations[, rev(rev_order)]
+    combinations = combinations[, rev_order]
   }
   # Concatenate the combinations row-wise
   output <- apply(combinations, 1, paste0, collapse = "")
@@ -350,30 +382,83 @@ replicate_var = function(data, data_dummy, var, discrete){
   return(data_dummy)
 }
 
-unbalanced_lag = function(data,id_var,time_var, value_vars, lag_amounts){
+unbalanced_lag = function(data,id_var,time_var, value_vars, lag_amounts,
+                          expand = F,expand_value = 0, birth_var =NA, death_var = NA){
+  # returns a dataframe with lag and log variables that account for potentially missing observations
+  # also if expand is true will set lags from before the id's birth / after it's death to zero if it lies within the 
+  # time range of the dataset (otherwise will remain na)
+  
+  ### assign short haand versions of the variable names 
+  if(('value' %in% value_vars) & length(value_vars) > 1) stop("you're about to clobber the value var; rename it")
   data = as.data.table(data)
+  og_columns = names(data)
+  
+  final_columns = og_columns; 
+  if(any( lag_amounts <0)) final_columns = c(final_columns, gpaste(value_vars,"_", paste0("lead",abs(lag_amounts %>% .[.<0]))))
+  if(any( lag_amounts >0)) final_columns = c(final_columns, gpaste(value_vars,"_", paste0("lag",lag_amounts %>% .[.>0])))
+  
+  min_time = min(data[[time_var]]); max_time  = max(data[[time_var]]); 
+  missing_time = setdiff(min_time:max_time, unique(data[[time_var]]))
+  data$expand = expand
+  data$time = data[[time_var]]
+  data[, id := get(id_var[1])]; if (length(id_var) > 1) for (i in 2:length(id_var)){data[, id := paste(id, get(id_var[i]))] }  
+  if(is.na(birth_var)){data[,birth_var := min(time), by = id_var][birth_var == min_time, birth_var :=NA]}else{data$birth_var = data[[birth_var]]}
+  if(is.na(death_var)){data[,death_var := max(time), by = id_var][death_var == max_time, death_var :=NA]}else{data$death_var = data[[death_var]]}
+  
+  
+  ### generate the lag / lead variables 
   for (value_var  in value_vars){for (lag_amount in lag_amounts){
-    data[, id := get(id_var[1])]
-    if (length(id_var) > 1){
-      for (i in 2:length(id_var)){data[, id := paste(id, get(id_var[i]))] }  
-    } 
-    data[, `:=`(value = get(value_var),
-                time = get(time_var),
-                time_lag = get(time_var) +lag_amount)]
+    data[, `:=`(value = get(value_var), time_lag = get(time_var) +lag_amount)]
     
     data = merge(data, data[, .(time_lag, id, value)] %>% rename(value_lag= value),
                  by.x = c('id','time'), by.y = c('id', 'time_lag'), all.x = T) 
     
     if (lag_amount > 0) {
-      data[, paste0(value_var,"_",'lag',lag_amount) := value_lag]
+      data[, paste0(value_var,"_",'lag',lag_amount) := case_when(
+        !is.na(value_lag) | is.na(birth_var) | !expand ~ value_lag,
+        (time + 1 - lag_amount == birth_var) &! (time %in% c(missing_time + lag_amount)) ~ expand_value,
+        T~ value_lag)]
+      
+      
     }else{
-      data[, paste0(value_var,"_",'lead',-1*lag_amount) := value_lag] 
+      lead_amount = -1*lag_amount
+      data[, paste0(value_var,"_",'lead',lead_amount) := case_when(
+        !is.na(value_lag) | is.na(death_var) | !expand ~ value_lag,
+        (time -1 + lead_amount == death_var) &! (time_var %in% c(missing_time + lead_amount)) ~ expand_value,
+        T~ value_lag)]
     }
-    extra = c('value','value_lag', 'time', 'time_lag', 'id')
+    extra = setdiff(c('value','value_lag', 'time_lag'), value_var)
     data[, (extra) := NULL]
   }}
-  return(data)
+  
+  return(data %>% select(final_columns))
+  
 }
+
+unbalanced_growth_rate = function(data,id_var, time_var, value_vars, time_horizon,
+                                  birth_var = NA,death_var = NA, alt_suffix = NA,expand = F, keep_lags = F){
+  
+  og_columns = names(data)
+  ## generate the initial leads and lags    
+  data = unbalanced_lag(data, id_var,time_var,value_vars, lag_amounts = setdiff(-1*time_horizon,0), expand = T,
+                        birth_var = birth_var, death_var = death_var)  
+  lag_amount = abs(time_horizon[1]); lead_amount = time_horizon[2]
+  
+  ## generate the growth rates for all variables 
+  suffix = ifelse(is.na(alt_suffix), '_growth_rate', alt_suffix)
+  fwd = ifelse(lead_amount == 0, "",paste0('_lead', lead_amount))
+  bwd =  ifelse(lag_amount == 0, "",paste0('_lag', lag_amount))
+  command = paste0(suffix, " = ifelse(fwd - bwd == 0, 0, .5*(fwd - bwd)/(fwd + bwd))")
+  command = lapply(value_vars, function(var){paste0(var, gsub('bwd',paste0(var, bwd),gsub('fwd', paste0(var, fwd), command)))}) %>%
+    unlist() %>% paste(.,collapse = ",") %>% paste0("data = data[,`:=`(", .,")]")
+  eval(parse(text = command))
+  
+  # drop lags if unwanted 
+  final_columns = c(og_columns, paste0(value_vars, suffix))
+  if(keep_lags) final_columns = names(data)
+  data = data %>% select(final_columns)
+}
+
 standardize = function(x){
   x = (x - mean(x,na.rm =T)) / sd(x, na.rm = T)
 }
