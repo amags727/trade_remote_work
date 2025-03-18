@@ -13,7 +13,7 @@ if (!file.exists("2) code/00_helper_functions.R")){setwd(dirname(rstudioapi::get
 source("2) code/00_helper_functions.R")
 inputs_dir = ('1) data/16_inputs_for_data_summary_stats')
 dir.create(inputs_dir)
-helper_functions = ls() 
+base_env = c(ls(),'base_env')
 
 # generate linkedin / bs_br data --------------------------------------------------
 linkedin = import_file('1) data/15_french_affiliated_firm_roles_collapsed_clean.parquet') %>%
@@ -46,59 +46,59 @@ command = paste0('bs_br_linkedin = bs_br_linkedin[, `:=`('
                          '/comp_total', no_expand = T, collapse_str = ', '),
                  ')]')
 eval(parse(text = command))
-write_parquet(bs_br_linkedin, file.path(inputs_dir, '16a_bs_br_linkedin.parquet'))
 
+write_parquet(bs_br_linkedin, file.path(inputs_dir, '16a_bs_br_linkedin.parquet'))
+rm(list= setdiff(ls(), base_env))
 # generate complete birth data ------------------------------------------
-# admin_birth_data = import_file('../../IWH/data/2_patent_tm_scraping/1_raw/1_StockUniteLegaleHistorique_utf8.csv', char_vars = 'siren',
-#                col_select = c("siren", "dateDebut", "etatAdministratifUniteLegale")) %>%
-#  .[, `:=`(start_year = year(dateDebut), firmid = siren)] %>%
-#  .[etatAdministratifUniteLegale != 'C' & !is.na(start_year) & start_year <= 2024 & start_year > 1901]  %>%
-#  .[, .(birth_year_admin = min(start_year)), by = firmid]
-# write_parquet(admin_birth_data, '1) data/14_admin_birth_data.parquet')
+#### prepare customs birth data
+customs_birth_data = import_csv('1) data/9_customs_cleaned.csv', char_vars =  c('firmid'), col_select = c('year', 'firmid','exim')) %>%
+  unique() %>% .[,min_exim_year := min(year), by = .(firmid,exim)] %>% 
+  pivot_wider(id_cols = c(year,firmid), names_from = exim, values_from = min_exim_year, names_prefix = 'exim') %>% 
+  group_by(firmid) %>% summarize(
+    birth_year_customs = min(year), 
+    first_import_year = NA_min(exim1),
+    first_export_year = NA_min(exim2)) %>% 
+  
+  # before we remove 1993 as a valid year, note if they ever imported / exported 
+  mutate(ever_import = !is.na(first_import_year),ever_export = !is.na(first_export_year), 
+         across(birth_year_customs, ~ifelse(.==1993,NA_real_, .))) #93 is the first year of our data 
+
+### prepare bs/br birth data
+br_birth_data = import_file(file.path(inputs_dir, '16a_bs_br_linkedin.parquet'), col_select = c('firmid', 'year'), char_vars = 'firmid') %>%
+  unique() %>%
+  .[!is.na(year) & !is.na(firmid)] %>%
+  .[,.(birth_year_BS = min(year)), by = firmid] %>%
+  .[birth_year_BS == 1994, birth_year_BS := NA] #94 is the first year of our data 
+
+### merge together component datasets to generate birth data 
+first_cust = c("first_import_year", "first_export_year")
 birth_data = import_parquet('1) data/14_admin_birth_data.parquet')  %>% unique() %>% 
+  merge(customs_birth_data, all = T) %>%merge(br_birth_data, all = T) %>% 
   
-  ## note year of first appearence in bs /br 
-  merge(import_file(file.path(inputs_dir, '16a_bs_br_linkedin.parquet'), col_select = c('firmid', 'year'), char_vars = 'firmid') %>%
-          unique() %>%
-          .[!is.na(year) & !is.na(firmid)] %>%
-          .[,.(birth_year_BS = min(year)), by = firmid] %>%
-          .[birth_year_BS == 1994, birth_year_BS := NA] #94 is the first year of our data 
-        , all = T) %>%
-  
-  ## note year of first appearence in customs  
-  merge(import_csv('1) data/9_customs_cleaned.csv', char_vars =  c('firmid'), col_select = c('year', 'firmid','exim')) %>%
-          unique() %>% .[,min_exim_year := min(year), by = .(firmid,exim)] %>% 
-          pivot_wider(id_cols = c(year,firmid), names_from = exim, values_from = min_exim_year, names_prefix = 'exim') %>% 
-          group_by(firmid) %>% summarize(
-            birth_year_customs = min(year), 
-            first_import_year = NA_min(exim1),
-            first_export_year = NA_min(exim2)) %>% 
-          
-          # before we remove 1993 as a valid year, note if they ever imported / exported 
-          mutate(ever_import = !is.na(first_import_year),
-                 ever_export = !is.na(first_export_year), 
-          across(-firmid, ~ifelse(.==1993,NA_real_, .))) #93 is the first year of our data 
-        , all = T) %>%
-  
+  ## generate birth year data with order of priority:
+  ## 1) bs/br if less than customs 2) admin if less than customs 3) customs if everything else missing 
   .[,birth_year := case_when(
     birth_year_BS <= birth_year_customs ~ birth_year_BS,
     !is.na(birth_year_BS) & is.na(birth_year_customs) ~ birth_year_BS,
     birth_year_admin <= birth_year_customs ~ birth_year_admin,
     !is.na(birth_year_admin) & is.na(birth_year_customs) ~ birth_year_admin,
-   !is.na(birth_year_customs) & is.na(birth_year_admin) & is.na(birth_year_BS) ~ birth_year_customs,
-   T ~ NA_real_)] %>% 
+    !is.na(birth_year_customs) & is.na(birth_year_admin) & is.na(birth_year_BS) ~ birth_year_customs,
+    T ~ NA_real_)] %>% 
+  .[,type := case_when(birth_year == birth_year_BS ~ "BS",birth_year == birth_year_admin ~ "admin",
+                       birth_year == birth_year_customs ~ "customs", T ~ "missing")] %>%
   
-  .[,`:=`(type = case_when(birth_year == birth_year_BS ~ "BS",
-                       birth_year == birth_year_admin ~ "admin",
-                       T ~ "missing"),
-          years_alive_before_export = first_export_year - birth_year,
-          years_alive_before_import = first_import_year - birth_year)] 
+
+  ## correct the first / export import year: it only exists if we know when the firm was born 
+  ## and that year is <= first export year 
+  .[, (first_cust) := lapply(.SD, function(x) case_when(is.na(birth_year) | (x==1993 & birth_year !=1993)~NA,
+                                                       birth_year <= x ~x, T~ NA)),  .SDcols = first_cust] %>%
+  .[, (paste0('years_alive_before_', c('export', 'import'))) := lapply(.SD, function(x) x -birth_year),
+    .SDcols = first_cust]
+
+
 
 write_parquet(birth_data,file.path(inputs_dir, '16b_complete_birth_data.parquet'))
-
-
-
-
+rm(list= setdiff(ls(), base_env))
 # generate customs data ---------------------------------------------------
 sim_vars = 'french_distance'
 french_sim = read_rds('1) data/similarity_matrices/outputs/similiarity_data.rds') %>% filter(ctry == 'FR')
@@ -109,18 +109,17 @@ french_distances = fread('1) data/similarity_matrices/outputs/france_distance_da
 customs_data = import_csv('1) data/9_customs_cleaned.csv', char_vars = 'firmid') %>% 
   distinct(firmid, year,exim, ctry, .keep_all = TRUE) %>% 
   unbalanced_lag(., c("firmid", 'exim', 'ctry'), "year", "deflated_value", c(-1,1)) %>% 
-  merge(french_distances, all.x= T) %>% 
-  mutate(flow_type = ifelse(exim ==1, 'import', 'export'),
-         
-         # define market entry terms 
-         new_markets = is.na(deflated_value_lag1),
-         market_entry_failures = case_when((!new_markets| year == max(year,na.rm = T)) ~ NA,
-                                           is.na(deflated_value_lead1) ~ T,
-                                           T~F)) %>% 
+  merge(french_distances, all.x= T, by = 'ctry') %>% 
   
-  ## collapse down to firmid, year, flow_type 
-  group_by(firmid, year, flow_type) %>%  rename(value_customs = deflated_value) %>% 
-  mutate(share = value_customs / NA_sum(value_customs), intermarket_hhi = share^2) %>% 
+  ## define flow type and market entry terms 
+  .[, `:=`(flow_type = ifelse(exim ==1, 'import', 'export'),
+           new_markets = is.na(deflated_value_lag1) & year !=1993)] %>% #customs data starts in 1993
+  .[, market_entry_failures := case_when(!new_markets| year == max(year,na.rm = T) ~ NA, is.na(deflated_value_lead1) ~ T, T~F)] %>% 
+           
+  ## collapse down to firmid, year, flow_type
+  rename(value_customs = deflated_value) %>%
+  .[,intermarket_hhi := (value_customs / NA_sum(value_customs))^2, by = .(firmid, year, flow_type)] %>%
+  group_by(firmid, year, flow_type) %>% 
   summarize(across(c('new_markets', 'market_entry_failures', 'value_customs', 'intermarket_hhi'), ~NA_sum(.)), 
             currently = as.numeric(any(value_customs != 0)), 
             markets = n(), 
@@ -130,77 +129,13 @@ customs_data = import_csv('1) data/9_customs_cleaned.csv', char_vars = 'firmid')
   
   ## redo the collapse to be at firmid, year level 
   pivot_wider(id_cols = c(firmid,year), names_from = flow_type, values_from =
-                c('currently','markets','new_markets', 'market_entry_failures', 
-                  'market_entry_failure_rate', 'value_customs','intermarket_hhi',
+                c('currently','markets', 'market_entry_failure_rate', 'value_customs','intermarket_hhi',
                   gpaste(sim_vars, c('_wgted_markets', '_wgted_value_customs'))))
 
 write_parquet(customs_data,file.path(inputs_dir, '16c_customs_for_data_summ_stats.parquet'))
-
+rm(list= setdiff(ls(), base_env))
 # generate the industry level data ----------------------------------------
-#import and process nace version 2 codes 
-{
-  #  nace_code <- import_file("https://gist.githubusercontent.com/b-rodrigues/4218d6daa8275acce80ebef6377953fe/raw/99bb5bc547670f38569c2990d2acada65bb744b3/nace_rev2.csv") %>%
-  #    rename_with(~tolower(.)) %>% mutate(code = gsub("\\.", "",code)) %>%
-  #    select(level, code,description)
-  # 
-  #  for (lev in 1:4){
-  #    command = paste0(
-  #      "nace_code = nace_code %>% mutate(nace_",lev,
-  #      " = ifelse(level == ", lev,", code, NA), nace_descrip_",lev,
-  #      " = ifelse(level == ", lev,", description, NA))", 
-  #      ifelse(lev != 1, paste0(" %>% group_by(nace_",lev-1,")"), ""),
-  #      ifelse(lev != 4,gpaste(" %>% fill(nace_", c("", "descrip_"), lev, ", .direction = 'down')",
-  #             collapse_str = ""), "")
-  #      )
-  #    eval(parse(text = command))
-  #  }
-  #    nace_code = nace_code %>%
-  #    mutate(nace_descrip_short_1 = case_when(
-  #      nace_1 == "A" ~ "AGRICULTURE",
-  #      nace_1 == "B" ~ "MINING",
-  #      nace_1 == "C" ~ "MANUFACTURING",
-  #      nace_1 == "D" ~ "UTILITIES",
-  #      nace_1 == "E" ~ "WATER MANAGEMENT",
-  #      nace_1 == "F" ~ "CONSTRUCTION",
-  #      nace_1 == "G" ~ "WHOLESALE /\n RETAIL TRADE",
-  #      nace_1 == "H" ~ "TRANSPORTATION",
-  #      nace_1 == "I" ~ "ACCOMMODATION /\n FOOD SERV.",
-  #      nace_1 == "J" ~ "INFO /\nCOMMUNICATION",
-  #      nace_1 == "K" ~ "FINANCE /\nINSURANCE",
-  #      nace_1 == "L" ~ "REAL ESTATE",
-  #      nace_1 == "M" ~ "PROFESSIONAL,\nSCIENCE + TECH",
-  #      nace_1 == "N" ~ "ADMIN",
-  #      nace_1 == "O" ~ "PUBLIC ADMIN + DEFENCE",
-  #      nace_1 == "P" ~ "EDUCATION",
-  #      nace_1 == "Q" ~ "HHS",
-  #      nace_1 == "R" ~ "ARTS + ENTERTAINMENT",
-  #      nace_1 == "S" ~ "OTHER SERVICES",
-  #      nace_1 == "T" ~ "HOUSEHOLD ACTIVITY",
-  #      nace_1 == "U" ~ "EXTRATERRITORIAL ORGS",
-  #      TRUE ~ NA_character_),
-  #      
-  #      nace_descrip_short_2 = case_when(
-  #      nace_2 == 58 ~ "Publishing",
-  #      nace_2 == 59 ~ "Video + Music /nProduction",
-  #      nace_2 == 60 ~ "Programming/\nBroadcast",
-  #      nace_2 == 61 ~ "Telecom",
-  #      nace_2 == 62 ~ "Computer programming",
-  #      nace_2 == 63 ~ "Information Service",
-  #      nace_2 == 69 ~ "Legal and Accounting",
-  #      nace_2 == 70 ~ "Consultancy",
-  #      nace_2 == 71 ~ "Architectural \n Engineering",
-  #      nace_2 == 72 ~ "R&D",
-  #      nace_2 == 73 ~ "Advertising\nmarket research",
-  #      nace_2 == 74 ~ "Other",
-  #      nace_2 == 75 ~ "Veterinary",
-  #      TRUE ~ nace_descrip_2), 
-  #      
-  #      nace_descrip_short_3 =  nace_descrip_3,
-  #      nace_descrip_short_4 = nace_descrip_4)
-  # 
-  # fwrite(nace_code, file.path(inputs_dir, '16d_nace_code_breakdown.csv'))
-}
-
+## code for making nace code data is at  3a_make_ancillary data 
 nace_code = import_file(file.path(inputs_dir, '16d_nace_code_breakdown.csv')) %>%
   select(paste0('nace_', 1:4)) %>% 
   mutate(NACE_BR = nace_4) %>% 
@@ -273,18 +208,18 @@ industry_data_censored = industry_data %>%
   mutate(across(period_vars, ~ifelse(num_period_observations < 5, NA,.)),
          across(yearly_vars, ~ifelse(num_yearly_observations < 5, NA,.))) %>%
   filter(!is.na(num_yearly_observations) | !is.na(num_period_observations))
+
 write_parquet(industry_data_censored,file.path(inputs_dir, '16f_data_x_industry_stats_censored.parquet'))
-
-
-
-#generate the firm-year level dataset  ---------------------
+rm(list= setdiff(ls(), base_env))
+# generate the firm-year level dataset  ---------------------
 ## define variable groups 
+exp_imp = c('export', 'import')
 growth_vars = c('turnover', 'dom_turnover', gpaste(c('value_bs', 'value_customs', 'markets'), '_export'))
 birth_vars = c('firmid', 'birth_year','first_import_year', 'first_export_year',
-               gpaste(c('ever','years_alive_before'),c('_import', '_export')))
-customs_to_zero= c('currently','markets', 'new_markets', 'market_entry_failures', 'value_customs', 'currently')
+               gpaste(c('ever','years_alive_before'),"_", exp_imp))
+customs_to_zero= c('currently','markets', 'value_customs', 'currently')
 log_vars = c(growth_vars,'empl','age','cost_per_worker_linkedin', 'cost_per_worker_bs', 'comp_data',
-             paste0('years_since_first_', c('export', 'import')))
+             paste0('years_since_first_', exp_imp))
 
 ## import industry / birth data 
 industry_data = import_file(file.path(inputs_dir, '16e_data_x_industry_stats.parquet')) %>%
@@ -310,10 +245,12 @@ firm_yr_lvl = import_file(file.path(inputs_dir, '16a_bs_br_linkedin.parquet'), c
   
   # merge in birth / industry data
   merge(birth_data, all.x = T) %>% 
-  mutate(age = year - birth_year,
-         years_since_first_import = year - first_import_year,
-         years_since_first_export = year - first_export_year,
-         across(contains('years_since_first'), ~ifelse(.<0, NA, .))) %>% 
+  .[,age := year - birth_year] %>% 
+  .[,(paste0('years_since_first_',exp_imp)) := lapply(.SD, function(x) year - x), .SDcols = paste0('first_',exp_imp,'_year')] %>%
+  .[,(paste0('years_since_first_',exp_imp)) := lapply(.SD, function(x) ifelse(x<0, NA, x)), .SDcols = (paste0('years_since_first_',exp_imp))] %>%
+  .[, (paste0('is_first_',exp_imp,'_year')):= lapply(.SD, function(x) year == x), .SDcols = paste0('first_',exp_imp,'_year')] %>%
+
+  # merge in industry data
   merge(industry_data, by= c('NACE_BR','year'), all.x = T) %>% 
   
   ## add in data quartile variables
@@ -331,10 +268,13 @@ firm_yr_lvl = import_file(file.path(inputs_dir, '16a_bs_br_linkedin.parquet'), c
 
 
 write_parquet(firm_yr_lvl,file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'))
-#generate firm level dataset -------------------------------------------------
+rm(list= setdiff(ls(), base_env))
+# generate firm level dataset -------------------------------------------------
 revenue_vars = c('turnover', 'dom_turnover', 'value_bs_export', 'value_customs_export')
 comp_vars =   gpaste(c("quartile_", "quartile_share_", "", "share_"), "comp_data")
 num_cores = detectCores()-2
+
+### generate chunked versions of the data for faster processing 
 chunked_data = import_file(
   file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'),
   col_select = c('firmid', 'year', revenue_vars, 'age', 'currently_export', comp_vars, "NACE_BR")) %>%
@@ -343,17 +283,19 @@ chunked_data = import_file(
   split(., .[['chunk']])
 for (i in seq_along(chunked_data)) write_parquet(chunked_data[[i]],paste0('1) data/temp_chunk',i,'.parquet'))
 
-
-cl <- makeCluster(num_cores); clusterExport(cl,c(helper_functions,"type",'revenue_vars'));
+## run the cluster
+cl <- makeCluster(num_cores); clusterExport(cl,c(base_env,"type",'revenue_vars'));
 clusterEvalQ(cl, {lapply(packages, library, character.only = T)})
 firm_level_variation = rbindlist(parLapply(cl,1:num_cores, function(i){
   base = import_file(paste0('1) data/temp_chunk',i,'.parquet'))
+  
+  # set the NACE_BR for the firm as the NACE value it most commonly appears as 
   NACE_breakdown =  base[,.(count = .N), by = .(NACE_BR, firmid)] %>% 
     arrange(-count) %>% distinct(firmid,.keep_all = T) %>%
-    select(firmid, NACE_BR)
+    select(firmid, NACE_BR) 
 
 
-  ## generate the firm level variable creation code 
+  ## generate the firm level variable creation code (input is a placeholder)
   base_command = paste0("variance_input = var(input, na.rm =T),",
                         "de_trended_variance_input = sub_regression(input,year, ssr = T)") %>%
     paste0(.,", ", gsub("\\(input","(asinh(input)", gsub("_input", '_log_input',.)))
@@ -375,50 +317,71 @@ firm_level_variation = rbindlist(parLapply(cl,1:num_cores, function(i){
 stopCluster(cl)
 
 write_parquet(firm_level_variation,file.path(inputs_dir, '16h_firm_level_summ_stats_inputs.parquet'))
-
-
-# Generate the export-ctry year level dataset -----------------------------
-
+rm(list= setdiff(ls(), base_env))
+# generate the export-ctry year level dataset -----------------------------
+## define varlists 
 firm_level_vars = c('firmid','year', 'NACE_BR', 'dom_turnover', 'age','markets_export','years_since_first_export',
-                    gpaste(c("", "quartile_"),c("", "share_"), "comp_data"))
+                    gpaste(c("", "quartile_"),c("", "share_"), "comp_data"), 'first_export_year', 'birth_year')
+
 customs_vars = c('firmid', 'ctry','streak_id', 'exim', 'products', 'deflated_value', 'streak_start', 'year_in_streak', 'year',
                  'streak_birth_observed')
+
+streak_id_vars = c('firmid','ctry','streak_id'); # note that in the non-dummy version of this streak id should be fine
 growth_vars = c('deflated_value','products')
-log_vars = c('dom_turnover', 'age', 'markets_export','years_since_first_export', 'comp_data', 
-             'deflated_value')
+log_vars = c(gpaste(c(paste0("first_", c("streak", "ctry", "export"), "_yr_"),""), growth_vars),
+             'dom_turnover', 'age', 'markets_export','comp_data', 'market_size',
+             paste0('years_since_',c('ctry', 'export'), "_entry"))
 
 firm_level_data = import_file(file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'),
-                              col_select = firm_level_vars, char_vars = 'firmid')
+                              col_select = firm_level_vars, char_vars = 'firmid') %>% 
+                  rename(years_since_export_entry = years_since_first_export)
 
 #### Import the export data and merge everything together 
 export_data = import_file('1) data/9_customs_cleaned.csv', col_select = customs_vars, char_vars = 'firmid') %>%
   distinct(firmid, year,exim, ctry, .keep_all = TRUE)  %>% 
-  .[exim == 2] %>% 
+  .[exim == 2] %>% .[,exim := NULL] %>% 
   .[streak_birth_observed == 0, c("streak_start", "year_in_streak") := NA] %>% 
   
-  #### generate growth rates 
-  unbalanced_growth_rate(., c("firmid", 'ctry'), 'year', growth_vars, c(-1,0), 'streak_start', expand = T) %>% 
-  unbalanced_growth_rate(., c("firmid", 'ctry'), 'year', growth_vars, c(0,1), 'streak_start', expand = T, alt_suffix = "_growth_rate_lead1") %>%
-  unbalanced_growth_rate(., c("firmid", 'ctry'), 'year', growth_vars, c(-1,1), 'streak_start', expand = T, alt_suffix = "_growth_rate_2yr") 
-
-  export_data = export_data %>%
+  #### generate streak growth rates 
+  unbalanced_growth_rate(., streak_id_vars, 'year', growth_vars, c(-1,0), 'streak_start', expand = T) %>% 
+  rename_with(.cols = contains('growth'), ~paste0("streak_", .)) %>%
   
-  ## generate indicator for whether this is the firm's first time in the country 
-  merge(export_data %>% distinct(firmid, ctry, streak_start) %>%
-          .[,.(first_observed_ctry_entrance_yr = NA_min(streak_start)), by = .(firmid, ctry)]) %>%
-  .[, first_observed_ctry_streak := 
-      case_when(streak_start == first_observed_ctry_entrance_yr & streak_birth_observed ~ T, 
-                !streak_birth_observed ~ NA,
-                T ~ F)] %>%
- 
+  ## fill in gaps in streaks to generate overall behavior variables 
+  merge(.[, .(year = seq(min(year), max(year))), by = .(firmid,ctry)], all =T, by = c('firmid', 'ctry','year')) %>%
+  .[, (growth_vars) := lapply(.SD, function(x) fcoalesce(x, 0)), .SDcols = growth_vars] %>% #na_replace values
+  .[,ctry_entrance_yr := min(year), by = .(firmid, ctry)] %>%  ## temp version will fix after birth year added below
+  .[,years_since_ctry_entry := year -  ctry_entrance_yr] %>% 
+   unbalanced_growth_rate(., c('firmid','ctry'), 'year', growth_vars, c(-1,0), 'ctry_entrance_yr', expand = T) %>%
+  
   # add in firm level  data
-  merge(firm_level_data, by = c('firmid', 'year')) %>% 
+  merge(firm_level_data, by = c('firmid', 'year')) %>% .[,ctry_NACE_BR := paste0(ctry, NACE_BR)]  %>%
+    
+  # fix the country entrance year 
+  .[, ctry_entrance_yr := lapply(.SD, function(x) case_when(is.na(birth_year) | (x==1993 & birth_year !=1993)~NA,
+                                                      birth_year <= x ~x, T~ NA)),  .SDcols = 'ctry_entrance_yr'] %>%
+    
+  # add the "first" variables 
+  .[,first_export_market := first_export_year == ctry_entrance_yr & !is.na(first_export_year)] %>% 
+  .[,first_market_streak := !is.na(ctry_entrance_yr) & ctry_entrance_yr == streak_start] %>% 
+  .[,first_export_streak := first_export_market & !is.na(ctry_entrance_yr) & ctry_entrance_yr == streak_start] %>% 
+  mutate(across(growth_vars, ~ifelse(year == streak_start,.,NA), .names = 'first_streak_yr_{col}'),
+         across(growth_vars, ~ifelse(year == ctry_entrance_yr,.,NA), .names = 'first_ctry_yr_{col}'),
+         across(growth_vars, ~ifelse(year == ctry_entrance_yr & first_export_market,.,NA), .names = 'first_export_yr_{col}')) %>% 
   
   # add in the size of the industry overall in that year as an interaction term 
   merge(.[,.(market_size = NA_sum(deflated_value)), by = .(NACE_BR, year, ctry)] %>% na.omit(), 
         by = c('NACE_BR', 'ctry', 'year'), all.x = T) %>% 
   
   ## add in log vars 
-  mutate(across(log_vars, ~asinh(.), .names = "log_{col}"))
+  .[, paste0("log_", log_vars) := lapply(.SD, asinh), .SDcols = log_vars]
   
 write_parquet(export_data,file.path(inputs_dir, '16i_export_firm_ctry_level_summ_stats_inputs.parquet'))
+rm(list= setdiff(ls(), base_env))
+
+
+
+
+
+
+
+

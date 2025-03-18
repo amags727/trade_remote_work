@@ -287,7 +287,7 @@ import_file <- function(filepath, col_select = NULL, data_table = T, char_vars =
     file <- import_parquet(filepath, col_select = col_select, data_table = T) %>%
       mutate(across(char_vars, ~as.character(.)))
     } else if (grepl("\\.xlsx$|\\.xls$", filepath, ignore.case = TRUE)) {
-    file <- read_excel(filepath)
+    file <- read_excel(filepath) %>% as.data.table()
   } else if (grepl("\\.csv$", filepath, ignore.case = TRUE)) {
     file <- import_csv(filepath, col_select = col_select, char_vars = char_vars)
   } else if (grepl("\\.rds$", filepath, ignore.case = TRUE)) {

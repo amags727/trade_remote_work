@@ -2,7 +2,7 @@
 rm(list = ls())
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
-             'arrow', 'fixest', 'kableExtra')
+             'arrow', 'fixest', 'kableExtra', 'survival')
 lapply(packages, function(package){
   tryCatch({library(package,character.only = T)}, error = function(cond){
     install.packages(package); library(package, character.only = T)
@@ -18,6 +18,7 @@ inputs_dir = ('1) data/16_inputs_for_data_summary_stats')
 # setup -------------------------------------------------------------------
 firm_yr_lvl = import_file(file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'))
 firm_lvl = import_file(file.path(inputs_dir, '16h_firm_level_summ_stats_inputs.parquet'))
+firm_ctry_yr_lvl = import_file(file.path(inputs_dir, '16i_export_firm_ctry_level_summ_stats_inputs.parquet'))
 
 
 #export_censored_firm_level_data = firm_level_data[is.na(first_export_year) | year <= first_export_year] %>%
@@ -27,8 +28,7 @@ firm_lvl = import_file(file.path(inputs_dir, '16h_firm_level_summ_stats_inputs.p
 
 
 # construct the inputs for each table  ------------------------------------
-growth_suffixes = c("_growth_rate", "_growth_rate_lead1", "_growth_rate_2yr")
-
+growth_suffixes = c("_growth_rate") #, "_growth_rate_lead1", "_growth_rate_2yr")
 
 ## block 1 relationship to bs variables --> quartiles 
 block_1_dep = c('log_turnover', paste0('turnover',growth_suffixes),
@@ -58,25 +58,76 @@ block_3_dep = c(
   'value_bs_export' %>% c(paste0('log_',.), paste0(.,growth_suffixes)) %>% c(., gsub('bs', 'customs',.)),
   'market_entry_failure_rate_export', 'intermarket_hhi_export')
 block_3_ind = block_1_ind
-block_3_controls = c('', '+ log_age') %>% c(., paste0(., ' + log_years_since_first_export')) 
+block_3_controls =  '+ log_age + log_dom_turnover' %>% c(., paste0(., ' + log_years_since_first_export')) 
 block_3 = expand(block_3_dep, block_3_ind, block_3_controls, names = c('dep_var', 'ind_var', 'controls'),  order = c(3,2,1)) %>%
   mutate(block = 1, dataset = 'firm_yr_lvl,', fe = " | NACE_BR + year",   cluster = ", cluster = ~firmid)",
          regression_type = 'feols')
 
+## block 4 individual market performance
+block_4_dep  = c('deflated_value', 'products')
+block_4_dep = c(gpaste('log_',block_4_dep),gpaste(block_4_dep,growth_suffixes)) %>% .[order(!grepl("defl", .))] 
+interactions =  gpaste(block_1_ind, c('first_export_streak','first_market_streak', 'log_markets_export') %>% paste0("*",.," + ",.))
+block_4_ind = c(block_1_ind, interactions)
+block_4_controls = "+ log_age +log_dom_turnover" %>% 
+  c(., paste0(.,"+log_years_since_ctry_entry + log_years_since_export_entry")) 
+block_4 = expand(block_4_dep, block_4_ind, block_4_controls, names = c('dep_var', 'ind_var', 'controls')) %>%
+  mutate(block =4, dataset = 'firm_ctry_yr_lvl', cluster = ", cluster = ~firmid)", regression_type = 'feols') 
+
+## block 5: entrance values in individual markets 
+block_5_dep = gpaste('log_first_',c('streak', 'ctry', 'export'),"_yr_", c('deflated_value', 'products'), order = rev(1:4))
+block_5_ind =  c(block_1_ind, gpaste(block_1_ind, c('log_markets_export') %>% paste0("*",.," + ",.)))
+block_5 = expand(block_5_dep, block_5_ind, names = c('dep_var', 'ind_var')) %>%
   
-              
+  ## handle the controls 
+  mutate(controls = "+ log_age +log_dom_turnover", counter = 1:nrow(.)) %>% 
+  rbind(., .[!grepl('export', dep_var)] %>% 
+          mutate(controls = paste0(controls, "+ log_years_since_export_entry + log_markets_export" ),
+                 across('controls', ~ifelse(grepl('streak', dep_var), paste0(.,"+log_years_since_ctry_entry"),.)))) %>%
+  arrange(counter) %>% select(-counter) %>%
+  
+  ## handle rest of variables 
+  mutate(block = 5, dataset = 'firm_ctry_yr_lvl', fe = " | NACE_BR + year + ctry", 
+         cluster = ", cluster = ~ctry_NACE_BR)",regression_type = 'feols')
+
+## block 6: relationship to other comp variables 
+block_6 = expand(paste0('comp_',c("total", "engineer", "rnd", "stem")), block_1_ind, names = c('dep_var', 'ind_var'), order = 2:1) %>%
+  mutate(across('dep_var', ~ifelse(grepl('share', ind_var), paste0('share_',.), paste0('log_',.))),
+         controls = "+ log_age", block = 6, dataset = 'firm_yr_lvl',regression_type = 'feols',
+         fe = "| NACE_BR + year", cluster = ", cluster = ~firmid)" ) 
+
+## block 7: relationship to industry level variables 
+block_7_dep = c("log_comp_data","share_comp_data")
+block_7_ind = gpaste("industry_",c(gpaste(c('entrance', 'exit', 'churn'), "_share"),
+              gpaste(c("", 'de_trended_'),'variance_' ,c("","log_"), 'turnover', order = c(3,4,1,2))),'_quartile') 
+
+block_7 = expand(block_7_dep, block_7_ind, names = c('ind_var', 'dep_var')) %>% 
+  mutate(controls = "+ log_age", block = 7, dataset = 'firm_yr_lvl',regression_type = 'feols',
+         fe = "| year", cluster = ", cluster = ~firmid)" ) 
 
 
-#model = coxph(data = temp, Surv(year-1, year, exported) ~ quartile_comp_data + age + strata(NACE_BR, year))  
+
+block_8_ind_vars = block_1_ind
+block_8_controls = c('+log_firm_age',
+                      '+log_firm_age + log_dom_turnover')
 
 
+block_8b_controls = c("+log_streak_age + log_dom_turnover + log_num_other_markets",
+                      "*log_streak_age + log_dom_tunover +  log_num_other_markets",
+                      "*log_num_other_markets + log_streak_age + log_dom_turnover",
+                      "*first_export_streak + log_streak_age + log_dom_turnover + log_num_other_markets",
+                      "*first_market_streak +  log_streak_age + log_dom_turnover + log_num_other_markets")
+  
+model_logit <- feglm(policy_change ~ years_since_policy_change + flow_tot |dest + year, 
+                     data = temp, 
+                     family = binomial(link = "logit"),
+                     glm.iter = 100, cluster = ~dest)
 
+
+feglm(data = firm_yr_lvl[year<= first_export_year], (year == first_export_year) ~ age)
 # run the variations  -----------------------------------------------------
 variations = block_3
 
-variation_output = list(); all_models = list()
-failed_output = list();
-
+variation_output = list(); failed_output = list(); #all_models = list()
 for (i in 1:nrow(variations)){
 for (name in names(variations)){assign(name, variations[[name]][i])} 
 regression_intro = case_when(regression_type == "feols"~ 'feols( data = ')
@@ -93,10 +144,10 @@ if(!'reason' %in% names(model)){
   temp_output = merge(variations[i] %>% mutate(counter = i),
                       model_to_df(model) %>% mutate(counter = i))
   variation_output = c(variation_output, list(temp_output))
-  all_models = c(all_models, list(model))
+  # all_models = c(all_models, list(model))
 }else{
   failed_output = c(failed_output, list(model))
-  all_models = c(all_models, list(NA))
+  # all_models = c(all_models, list(NA))
 }
 }
 
@@ -222,13 +273,6 @@ summary_stats_output = lapply(1:nrow(variations), function(i){
 base_table = cbind(summary_stats_output %>% filter(block == '3a') %>% .[,1:4] %>%
                      rename_with(~c(" ", 2:4)),
                    summary_stats_output %>% filter(block == '3b') %>% .[,2:4]) 
-
-headers =  '&\\multicolumn{3}{c}{Total Data Comp}& & \\multicolumn{3}{c}{Share Data Comp}\\\\'
-output_path = file.path(output_dir, "variance_x_data_summary_stats.tex")
-format_summary_table(base_table, divisions_before = 4, headers, 
-                     note_width = 1, output_path = output_path)
-
-
 
 # chart growth  -----------------------------------------------------------
 
@@ -368,6 +412,7 @@ All regressions control for year and industry FE."
   format_summary_table(base_table, divisions_before = 4, headers, notes, 
                        note_width = 1, output_path)
 }
+
 
 
 
