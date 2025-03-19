@@ -2,6 +2,42 @@
 
 
 # Table Cleanup ----------------------------------------------------
+evaluate_variations = function(variations, save_space = T){
+ ### TRY TO RUN EACH OF THE MODELS 
+   int_output = lapply(1:nrow(variations), function(i){
+    command = variations$command[i]
+    model_attempt = tryCatch({eval(parse(text = command))},  error = function(e){e$message})
+    
+    ### IF THE MODEL FAILED TO RUN 
+    if(typeof(model_attempt) == 'character'){
+      print(paste0('failed row ',i,": ", command)); short_error = ""
+      if(grepl('of the formula but', gsub('\\n',' ',model_attempt))) short_error = 'missing variable'
+      if (grepl('The dependent variable', model_attempt) & grepl("is a constant", model_attempt)) short_error ="constant dep_var:"
+      if(grepl('are collinear with the fixed', model_attempt)) short_error = "ind vars collinear w/ fe"
+      failed_output = data.table(counter = i, command = command, reason = model_attempt, short_error = short_error)
+      variation_output = data.table()
+      model = list()
+    ##### IF THE MODEL SUCCESSFULLY RAN 
+    }else{ 
+      failed_output = data.table()
+      variation_output =tryCatch({merge(variations[i] %>% mutate(counter = i), model_to_df(model_attempt) %>% mutate(counter = i))}, error = function(e){data.table()})
+      if(nrow(variation_output) !=0 ) failed_output = data.table() else failed_output = data.table(counter = i, command = command, reason = "", short_error = "error converting to table")
+      if(save_space){
+        model = summary(model_attempt)
+        objects_to_delete = sapply(model, object.size) %>% as.data.frame() %>% rownames_to_column() %>%
+          rename_with(~c('object','size')) %>% filter(size > 10000)  %>% pull(object)
+        for(object in objects_to_delete) model[[object]] = NULL
+      }else{
+          model = model_attempt}
+    }
+    return(list(failed_output = failed_output, variation_output = variation_output, model = model))
+  })
+  variation_output = lapply(1:nrow(variations), function(i) int_output[[i]][['variation_output']]) %>% rbindlist(fill = T, use.names = T)
+  model_output = lapply(1:nrow(variations), function(i) int_output[[i]][['model']])
+  failed_output = lapply(1:nrow(variations), function(i) int_output[[i]][['failed_output']]) %>% rbindlist(fill = T, use.names = T)
+  return(list(variation_output = variation_output, model_output = model_output, failed_output = failed_output ))
+}
+
 model_to_df = function(model){
   data.frame(regressor = names(model$coefficients)) %>% mutate(
     year =  as.numeric(str_extract(regressor, '\\d{4}')),

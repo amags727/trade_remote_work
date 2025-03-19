@@ -90,10 +90,11 @@ birth_data = import_parquet('1) data/14_admin_birth_data.parquet')  %>% unique()
 
   ## correct the first / export import year: it only exists if we know when the firm was born 
   ## and that year is <= first export year 
-  .[, (first_cust) := lapply(.SD, function(x) case_when(is.na(birth_year) | (x==1993 & birth_year !=1993)~NA,
-                                                       birth_year <= x ~x, T~ NA)),  .SDcols = first_cust] %>%
-  .[, (paste0('years_alive_before_', c('export', 'import'))) := lapply(.SD, function(x) x -birth_year),
-    .SDcols = first_cust]
+  .[, (first_cust) := lapply(.SD, function(x)
+    case_when(is.na(birth_year) | (x==1993 & birth_year !=1993)~NA,
+              birth_year <= x ~x,
+              !is.na(birth_year) & is.na(x) ~ 2099, # it could have exported / imported but didn't --> set to 2099 for ease
+              T~ NA)),  .SDcols = first_cust]
 
 
 
@@ -213,58 +214,56 @@ write_parquet(industry_data_censored,file.path(inputs_dir, '16f_data_x_industry_
 rm(list= setdiff(ls(), base_env))
 # generate the firm-year level dataset  ---------------------
 ## define variable groups 
-exp_imp = c('export', 'import')
-growth_vars = c('turnover', 'dom_turnover', gpaste(c('value_bs', 'value_customs', 'markets'), '_export'))
-birth_vars = c('firmid', 'birth_year','first_import_year', 'first_export_year',
-               gpaste(c('ever','years_alive_before'),"_", exp_imp))
-customs_to_zero= c('currently','markets', 'value_customs', 'currently')
-log_vars = c(growth_vars,'empl','age','cost_per_worker_linkedin', 'cost_per_worker_bs', 'comp_data',
-             paste0('years_since_first_', exp_imp))
+  exp_imp = c('export', 'import')
+  growth_vars = c('turnover', 'dom_turnover', gpaste(c('value_bs', 'value_customs', 'markets'), '_export'))
+  birth_vars = c('firmid', 'birth_year', gpaste('first_',exp_imp, '_year'), gpaste("ever_", exp_imp))
+  customs_to_zero= c('currently','markets', 'value_customs', 'currently')
+  log_vars = c(growth_vars,'empl','age','cost_per_worker_linkedin', 'cost_per_worker_bs', 
+               paste0('comp_',c("total", "engineer", "rnd", "stem", 'data')),
+               paste0('years_since_first_', exp_imp))
 
 ## import industry / birth data 
-industry_data = import_file(file.path(inputs_dir, '16e_data_x_industry_stats.parquet')) %>%
-  filter(nace_level == 4) %>% 
-  select(-contains('desc'),-contains('observation'),-nace_level) %>%
-  rename(NACE_BR = nace_code) %>% mutate(NACE_BR = as.numeric(NACE_BR)) 
-
-
-
-birth_data = import_file(file.path(inputs_dir, '16b_complete_birth_data.parquet'),
-                         char_vars = 'firmid', col_select = birth_vars)
+  industry_data = import_file(file.path(inputs_dir, '16e_data_x_industry_stats.parquet')) %>%
+    filter(nace_level == 4) %>% 
+    select(-contains('desc'),-contains('observation'),-nace_level) %>%
+    rename(NACE_BR = nace_code) %>% mutate(NACE_BR = as.numeric(NACE_BR)) 
+  
+  birth_data = import_file(file.path(inputs_dir, '16b_complete_birth_data.parquet'),
+                           char_vars = 'firmid', col_select = birth_vars)
 
 
 ### MERGE TOGETHER ALL THE DATA 
-firm_yr_lvl = import_file(file.path(inputs_dir, '16a_bs_br_linkedin.parquet'), char_vars = "firmid") %>%
+  firm_yr_lvl = import_file(file.path(inputs_dir, '16a_bs_br_linkedin.parquet'), char_vars = "firmid") %>%
+    
+    ## merge in the customs data and zero where necessary 
+    merge(import_file(file.path(inputs_dir, '16c_customs_for_data_summ_stats.parquet')), all.x = T) %>% 
+    rename(value_bs_export = for_turnover) %>% 
+    mutate(across(intersect(names(.),paste0(customs_to_zero,'_export')), ~ ifelse(is.na(markets_export), 0, .)),
+           across(intersect(names(.),paste0(customs_to_zero,'_import')), ~ ifelse(is.na(markets_import), 0, .))) %>%
+    as.data.table() %>% .[year >= 2008] %>% 
+    
+    # merge in birth / industry data
+    merge(birth_data, all.x = T) %>% 
+    .[,age := year - birth_year] %>% 
+    .[,(paste0('years_since_first_',exp_imp)) := lapply(.SD, function(x) year - x), .SDcols = paste0('first_',exp_imp,'_year')] %>%
+    .[,(paste0('years_since_first_',exp_imp)) := lapply(.SD, function(x) ifelse(x<0, NA, x)), .SDcols = (paste0('years_since_first_',exp_imp))] %>%
+    .[, (paste0('is_first_',exp_imp,'_year')):= lapply(.SD, function(x) year == x), .SDcols = paste0('first_',exp_imp,'_year')] %>%
   
-  ## merge in the customs data and zero where necessary 
-  merge(import_file(file.path(inputs_dir, '16c_customs_for_data_summ_stats.parquet')), all.x = T) %>% 
-  rename(value_bs_export = for_turnover) %>% 
-  mutate(across(intersect(names(.),paste0(customs_to_zero,'_export')), ~ ifelse(is.na(markets_export), 0, .)),
-         across(intersect(names(.),paste0(customs_to_zero,'_import')), ~ ifelse(is.na(markets_import), 0, .))) %>%
-  as.data.table() %>% .[year >= 2008] %>% 
-  
-  # merge in birth / industry data
-  merge(birth_data, all.x = T) %>% 
-  .[,age := year - birth_year] %>% 
-  .[,(paste0('years_since_first_',exp_imp)) := lapply(.SD, function(x) year - x), .SDcols = paste0('first_',exp_imp,'_year')] %>%
-  .[,(paste0('years_since_first_',exp_imp)) := lapply(.SD, function(x) ifelse(x<0, NA, x)), .SDcols = (paste0('years_since_first_',exp_imp))] %>%
-  .[, (paste0('is_first_',exp_imp,'_year')):= lapply(.SD, function(x) year == x), .SDcols = paste0('first_',exp_imp,'_year')] %>%
-
-  # merge in industry data
-  merge(industry_data, by= c('NACE_BR','year'), all.x = T) %>% 
-  
-  ## add in data quartile variables
-  .[, paste0("quartile_", paste0(c("", "share_"), "comp_data")) := 
-      lapply(.SD, function(x) as.factor(ntile(x, 4))), 
-    .SDcols = paste0(c("", "share_"), "comp_data"), by = .(NACE_BR, year)] %>%
-  
-  ## add in the growth rate vars
-  unbalanced_growth_rate(.,'firmid', 'year', growth_vars, c(-1,0),birth_var =  "birth_year", expand = T) %>%
-  unbalanced_growth_rate(.,'firmid', 'year', growth_vars, c(0,1),birth_var  = "birth_year", alt_suffix = '_growth_rate_lead1',expand = T) %>%
-  unbalanced_growth_rate(.,'firmid', 'year', growth_vars, c(-1,1),birth_var  = "birth_year", alt_suffix = '_growth_rate_2yr',  expand = T) %>%
-  
-  ## add in log vars 
-  mutate(across(log_vars, ~asinh(.), .names = "log_{col}"))
+    # merge in industry data
+    merge(industry_data, by= c('NACE_BR','year'), all.x = T) %>% 
+    
+    ## add in data quartile variables
+    .[, paste0("quartile_", paste0(c("", "share_"), "comp_data")) := 
+        lapply(.SD, function(x) as.factor(ntile(x, 4))), 
+      .SDcols = paste0(c("", "share_"), "comp_data"), by = .(NACE_BR, year)] %>%
+    
+    ## add in the growth rate vars
+    unbalanced_growth_rate(.,'firmid', 'year', growth_vars, c(-1,0),birth_var =  "birth_year", expand = T) %>%
+    unbalanced_growth_rate(.,'firmid', 'year', growth_vars, c(0,1),birth_var  = "birth_year", alt_suffix = '_growth_rate_lead1',expand = T) %>%
+    unbalanced_growth_rate(.,'firmid', 'year', growth_vars, c(-1,1),birth_var  = "birth_year", alt_suffix = '_growth_rate_2yr',  expand = T) %>%
+    
+    ## add in log vars 
+    mutate(across(log_vars, ~asinh(.), .names = "log_{col}"))
 
 
 write_parquet(firm_yr_lvl,file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'))
@@ -321,52 +320,57 @@ rm(list= setdiff(ls(), base_env))
 # generate the export-ctry year level dataset -----------------------------
 ## define varlists 
 firm_level_vars = c('firmid','year', 'NACE_BR', 'dom_turnover', 'age','markets_export','years_since_first_export',
-                    gpaste(c("", "quartile_"),c("", "share_"), "comp_data"), 'first_export_year', 'birth_year')
+                    gpaste(c("", "quartile_"),c("", "share_"), "comp_data"))
 
-customs_vars = c('firmid', 'ctry','streak_id', 'exim', 'products', 'deflated_value', 'streak_start', 'year_in_streak', 'year',
-                 'streak_birth_observed')
+customs_vars = c('firmid', 'ctry','streak_id', 'exim', 'products', 'deflated_value', 'streak_start', 'year_in_streak', 'year')
 
 streak_id_vars = c('firmid','ctry','streak_id'); # note that in the non-dummy version of this streak id should be fine
 growth_vars = c('deflated_value','products')
 log_vars = c(gpaste(c(paste0("first_", c("streak", "ctry", "export"), "_yr_"),""), growth_vars),
-             'dom_turnover', 'age', 'markets_export','comp_data', 'market_size',
-             paste0('years_since_',c('ctry', 'export'), "_entry"))
+             'dom_turnover', 'age', paste0(c('', "num_other_"),'markets_export'),'comp_data', 'market_size',
+             paste0('years_since_',c('ctry', 'export'), "_entry"),
+             'streak_age')
 
 firm_level_data = import_file(file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'),
                               col_select = firm_level_vars, char_vars = 'firmid') %>% 
                   rename(years_since_export_entry = years_since_first_export)
 
+birth_data = import_file(file.path(inputs_dir, '16b_complete_birth_data.parquet'), col_select = c('firmid', 'birth_year','first_export_year'),
+            char_vars = 'firmid')
+
 #### Import the export data and merge everything together 
 export_data = import_file('1) data/9_customs_cleaned.csv', col_select = customs_vars, char_vars = 'firmid') %>%
   distinct(firmid, year,exim, ctry, .keep_all = TRUE)  %>% 
   .[exim == 2] %>% .[,exim := NULL] %>% 
-  .[streak_birth_observed == 0, c("streak_start", "year_in_streak") := NA] %>% 
+   merge(birth_data, all.x = T) %>%
+  .[is.na(birth_year) | (streak_start == 1993 & birth_year != 1993) | birth_year > streak_start, c("streak_start", "year_in_streak") := NA] %>% 
+  .[,streak_age := year_in_streak - 1] %>% .[,year_in_streak := NULL] %>% # make streak_age match firm_age def 
   
-  #### generate streak growth rates 
+  #### generate streak vars
   unbalanced_growth_rate(., streak_id_vars, 'year', growth_vars, c(-1,0), 'streak_start', expand = T) %>% 
   rename_with(.cols = contains('growth'), ~paste0("streak_", .)) %>%
+  .[, streak_ends := year == max(year), by = streak_id_vars] %>% 
+  
   
   ## fill in gaps in streaks to generate overall behavior variables 
   merge(.[, .(year = seq(min(year), max(year))), by = .(firmid,ctry)], all =T, by = c('firmid', 'ctry','year')) %>%
-  .[, (growth_vars) := lapply(.SD, function(x) fcoalesce(x, 0)), .SDcols = growth_vars] %>% #na_replace values
-  .[,ctry_entrance_yr := min(year), by = .(firmid, ctry)] %>%  ## temp version will fix after birth year added below
+  .[, (growth_vars) := lapply(.SD, function(x) fcoalesce(x, 0)), .SDcols = growth_vars] %>% # na_replace values
+  .[,cey := min(year), by = .(firmid, ctry)] %>%  
+  .[,cey := case_when(is.na(birth_year) | (cey==1993 & birth_year !=1993)~NA,birth_year <= cey ~ cey, T~ NA)] %>%
+  rename(ctry_entrance_yr = cey) %>% 
   .[,years_since_ctry_entry := year -  ctry_entrance_yr] %>% 
    unbalanced_growth_rate(., c('firmid','ctry'), 'year', growth_vars, c(-1,0), 'ctry_entrance_yr', expand = T) %>%
   
   # add in firm level  data
-  merge(firm_level_data, by = c('firmid', 'year')) %>% .[,ctry_NACE_BR := paste0(ctry, NACE_BR)]  %>%
-    
-  # fix the country entrance year 
-  .[, ctry_entrance_yr := lapply(.SD, function(x) case_when(is.na(birth_year) | (x==1993 & birth_year !=1993)~NA,
-                                                      birth_year <= x ~x, T~ NA)),  .SDcols = 'ctry_entrance_yr'] %>%
+  merge(firm_level_data, by = c('firmid', 'year')) %>%
+  .[,`:=`(ctry_NACE_BR = paste0(ctry, NACE_BR), num_other_markets_export = markets_export - 1)]  %>%
     
   # add the "first" variables 
-  .[,first_export_market := first_export_year == ctry_entrance_yr & !is.na(first_export_year)] %>% 
-  .[,first_market_streak := !is.na(ctry_entrance_yr) & ctry_entrance_yr == streak_start] %>% 
-  .[,first_export_streak := first_export_market & !is.na(ctry_entrance_yr) & ctry_entrance_yr == streak_start] %>% 
+  .[,first_ctry_streak := ctry_entrance_yr  == streak_start & !is.na(ctry_entrance_yr) ] %>% 
+  .[,first_export_streak := first_export_year == streak_start & !is.na(first_export_year)] %>% 
   mutate(across(growth_vars, ~ifelse(year == streak_start,.,NA), .names = 'first_streak_yr_{col}'),
-         across(growth_vars, ~ifelse(year == ctry_entrance_yr,.,NA), .names = 'first_ctry_yr_{col}'),
-         across(growth_vars, ~ifelse(year == ctry_entrance_yr & first_export_market,.,NA), .names = 'first_export_yr_{col}')) %>% 
+         across(growth_vars, ~ifelse(year == streak_start & first_ctry_streak,.,NA), .names = 'first_ctry_yr_{col}'),
+         across(growth_vars, ~ifelse(year == streak_start & first_export_streak,.,NA), .names = 'first_export_yr_{col}')) %>% 
   
   # add in the size of the industry overall in that year as an interaction term 
   merge(.[,.(market_size = NA_sum(deflated_value)), by = .(NACE_BR, year, ctry)] %>% na.omit(), 
