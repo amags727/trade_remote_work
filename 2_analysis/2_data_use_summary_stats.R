@@ -38,7 +38,8 @@ fcox_command = function(dataset, dep_var, ind_var, controls, fe, cluster, time_v
 ## block 1 relationship to bs variables
 {
 block_1_dep = c('log_turnover', paste0('turnover',growth_suffixes),
-                paste0('log_',c('empl','age','cost_per_worker_linkedin', 'cost_per_worker_bs')))
+                paste0('log_',c('empl','age',paste0('cost_per_worker', c('_bs','_linkedin',"_linkedin_fr")))))
+  
 block_1_ind =  gpaste(c("quartile", "quartile_share", "log", "share"), "_comp_data")
 
 block_1 = expand(block_1_dep,block_1_ind,c("", " + log_age"), names = c('dep_var', 'ind_var', "controls"),
@@ -168,9 +169,13 @@ variations = rbindlist(variations, use.names = T, fill = T)
 ## run 
 full_output = evaluate_variations(variations)
 View(full_output$failed_output) 
+
+## export outputs 
 unlink("3) output/4) data_summary_stats", recursive = TRUE)
 dir.create("3) output/4) data_summary_stats")
 write_rds(full_output, "3) output/4) data_summary_stats/all_output.rds")
+import_file('1) data/16_inputs_for_data_summary_stats/16f_data_x_industry_stats_censored.parquet') %>%
+  write_parquet("3) output/4) data_summary_stats/data_x_industry_stats_censored.parquet")
 rm(list= setdiff(ls(), c(base_env, c('full_output','variations'))))
 
 
