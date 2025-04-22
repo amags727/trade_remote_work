@@ -15,8 +15,11 @@ output_dir = '3) output/4) data_summary_stats'
 exporting_files = F
 inputs_dir = ('1) data/16_inputs_for_data_summary_stats')
 base_env = c(ls(),'base_env')
+
+
 # import data  -------------------------------------------------------------------
-firm_yr_lvl = import_file(file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'))
+firm_yr_lvl = import_file(file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet')) %>% 
+  .[,log_tfp := asinh(tfp)]
 firm_lvl = import_file(file.path(inputs_dir, '16h_firm_level_summ_stats_inputs.parquet'))
 firm_ctry_yr_lvl = import_file(file.path(inputs_dir, '16i_export_firm_ctry_level_summ_stats_inputs.parquet'))
 
@@ -35,10 +38,10 @@ fcox_command = function(dataset, dep_var, ind_var, controls, fe, cluster, time_v
   paste0("coxph(formula = Surv(", time_var, ",", time_var, "+ 1,", dep_var, ") ~ ", ind_var, controls, '+ strata(',fe ,") ,data = ", dataset,
          ", cluster = ", cluster, ", control = coxph.control(iter.max = 1000))")
 }
-## block 1 relationship to bs variables
-{
+
+# block 1 relationship to bs variables ------------------------------------
 block_1_dep = c('log_turnover', paste0('turnover',growth_suffixes),
-                paste0('log_',c('empl','age',paste0('cost_per_worker', c('_bs','_linkedin',"_linkedin_fr")))))
+                paste0('log_',c('tfp','empl','age',paste0('cost_per_worker', c('_bs','_linkedin',"_linkedin_fr")))))
   
 block_1_ind =  gpaste(c("quartile", "quartile_share", "log", "share"), "_comp_data")
 
@@ -46,9 +49,9 @@ block_1 = expand(block_1_dep,block_1_ind,c("", " + log_age"), names = c('dep_var
                  order = c(3,2,1)) %>% filter(!(dep_var == 'log_age' & controls == 'log_age')) %>%
   mutate(block = 1, dataset = 'firm_yr_lvl', fe = " | NACE_BR + year",   cluster = "firmid",
          command = feols_command(dataset, dep_var,ind_var, controls, fe, cluster))
-}
-## block 2 relationship to firm level variation
-{
+
+# block 2 relationship to firm level variation ------------------------------------
+
 block_2_dep =  gpaste(order = c(4,3,2,1),c('','de_trended_'),"variance_",c('',"log_"),
                    c('turnover', 'dom_turnover', 'value_bs_export', 'value_customs_export'))
 block_2_ind =  gpaste(c(gpaste(c('max_', 'median_'),c("quartile", "quartile_share"),order = c(2,1)),
@@ -58,9 +61,8 @@ block_2 = expand(block_2_dep, block_2_ind, c("", " + log_min_sample_age + log_sa
   mutate(block = 2, dataset = 'firm_lvl', fe = '| NACE_BR', cluster = "NACE_BR", 
          across('controls', ~ifelse(grepl('export',dep_var) &.!="", paste0(., " + log_years_exported"), .)),
          command = feols_command(dataset, dep_var,ind_var, controls, fe, cluster))
-}
-## block 3 relationship to overall export performance
-{
+
+# block 3 relationship to overall export performance ------------------------------------
 block_3_dep = c(
   'currently_export',
   'value_bs_export' %>% c(paste0('log_',.), paste0(.,growth_suffixes)) %>% c(., gsub('bs', 'customs',.)),
@@ -68,25 +70,24 @@ block_3_dep = c(
 block_3_ind = block_1_ind
 block_3_controls =  c("+ log_age", '+ log_age + log_dom_turnover' %>% c(., paste0(., ' + log_years_since_first_export')))
 block_3 = expand(block_3_dep, block_3_ind, block_3_controls, names = c('dep_var', 'ind_var', 'controls'),  order = c(3,2,1)) %>%
-  mutate(block = 1, dataset = 'firm_yr_lvl', fe = " | NACE_BR + year",   cluster = "firmid",
+  mutate(block = 3, dataset = 'firm_yr_lvl', fe = " | NACE_BR + year",   cluster = "firmid",
          command = feols_command(dataset, dep_var,ind_var, controls, fe, cluster))
          
-}
-## block 4 individual market performance
-{
+
+# block 4 relationship to overall export performance ------------------------------------
+
 block_4_dep  = c('deflated_value', 'products')
 block_4_dep = c(gpaste('log_',block_4_dep),gpaste(block_4_dep,growth_suffixes)) %>% .[order(!grepl("defl", .))] 
-interactions =  gpaste(block_1_ind, c('first_export_streak','first_ctry_streak', 'log_markets_export') %>% paste0("*",.," + ",.))
-block_4_ind = c(block_1_ind, interactions)
+block_4_ind = block_1_ind %>%  c(.,  gpaste(.,"*", c('first_export_streak','first_ctry_streak', 'log_markets_export')))
 block_4_controls = "+ log_age +log_dom_turnover" %>% c(., paste0(.,"+log_years_since_ctry_entry + log_years_since_export_entry")) 
 block_4 = expand(block_4_dep, block_4_ind, block_4_controls, names = c('dep_var', 'ind_var', 'controls')) %>%
   mutate(block =4, dataset = 'firm_ctry_yr_lvl', cluster = 'firmid', fe = "| NACE_BR  + ctry + year",
          command = feols_command(dataset, dep_var,ind_var, controls, fe, cluster))
-}
-## block 5: entrance values in individual markets 
-{
+
+# block 5: entrance values in individual markets --------------------------
+
 block_5_dep = gpaste('log_first_',c('streak', 'ctry', 'export'),"_yr_", c('deflated_value', 'products'), order = rev(1:4))
-block_5_ind =  c(block_1_ind, gpaste(block_1_ind, c('log_markets_export') %>% paste0("*",.," + ",.)))
+block_5_ind =  c(block_1_ind, gpaste(block_1_ind, '*log_markets_export'))
 block_5 = expand(block_5_dep, block_5_ind, names = c('dep_var', 'ind_var')) %>%
   
   ## handle the controls 
@@ -101,37 +102,43 @@ block_5 = expand(block_5_dep, block_5_ind, names = c('dep_var', 'ind_var')) %>%
          cluster = "ctry_NACE_BR",
          command = feols_command(dataset, dep_var,ind_var, controls, fe, cluster))
          
-}
-## block 6: relationship to other comp variables 
-{
+# block 6: relationship to other comp variables --------------------------
+
 block_6 = expand(paste0('comp_',c("total", "engineer", "rnd", "stem")), block_1_ind, names = c('dep_var', 'ind_var'), order = 2:1) %>%
   mutate(across('dep_var', ~ifelse(grepl('share', ind_var), paste0('share_',.), paste0('log_',.))),
          controls = "+ log_age", block = 6, dataset = 'firm_yr_lvl',
          fe = "| NACE_BR + year", cluster = 'firmid', 
          command = feols_command(dataset, dep_var,ind_var, controls, fe, cluster)) %>% 
     filter(dep_var != 'share_comp_total')
+
+# block 7: relationship to industry level variables --------------------------
+feols_command = function(dataset, dep_var,ind_var, controls, fe, cluster){
+  command = paste0('feols( data = ',dataset, ", ", dep_var, "~", ind_var, controls, fe, ",cluster = ~", cluster, ")")
 }
-## block 7: relationship to industry level variables 
-{
+
 block_7_dep = c("log_comp_data","share_comp_data")
 block_7_ind = gpaste("industry_",c(gpaste(c('entrance', 'exit', 'churn'), "_share"),
               gpaste(c("", 'de_trended_'),'variance_' ,c("","log_"), 'turnover', order = c(3,4,1,2))),'_quartile') 
 
+firm_yr_lvl = import_file(file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'), 
+                            col_select = c(block_7_dep, block_7_ind, 'year', 'firmid','log_age'))
+
 block_7 = expand(block_7_dep, block_7_ind, names = c('dep_var', 'ind_var')) %>% 
   mutate(controls = "+ log_age", block = 7, dataset = 'firm_yr_lvl', fe = "| year", cluster = 'firmid',
-         command = feols_command(dataset, dep_var,ind_var, controls, fe, cluster)) 
-}
-## Block 8: Logit time to enter
-{
+         command = feols_command(dataset, dep_var,paste0('as.factor(',ind_var,')'), controls, fe, cluster)) 
+block_7_output = evaluate_variations(block_7)
+write_rds(block_7_output,'3) output/4) data_summary_stats/block_7_output.rds')
+# Block 8: Logit time to enter --------------------------
+
 block_8 = expand(block_1_ind, c('+log_age', '+log_age + log_dom_turnover') %>% c(., gsub("\\+log", "*log",.)),
                  names = c('ind_var', 'controls')) %>%
-  mutate(dep_var = 'is_first_export_year', block = 9, dataset = "firm_yr_lvl[year <= first_export_year] ",
+  mutate(dep_var = 'is_first_export_year', block = 8, dataset = "firm_yr_lvl[year <= first_export_year] ",
         fe = "| NACE_BR + year", cluster ='firmid',
          command = flogit_command(dataset, dep_var,ind_var, controls, fe, cluster)) 
-}
 
-## Block 9: Logit time to exit market 
-{
+
+# Block 9: Logit time to exit market --------------------------
+
 block_9_controls = c("+log_streak_age + log_dom_turnover + log_num_other_markets_export",
                       "*log_streak_age + log_dom_turnover +  log_num_other_markets_export",
                       "*log_num_other_markets_export + log_streak_age + log_dom_turnover",
@@ -140,10 +147,10 @@ block_9_controls = c("+log_streak_age + log_dom_turnover + log_num_other_markets
 block_9 = expand('streak_ends', block_1_ind, block_9_controls, names =  c('dep_var', 'ind_var', 'controls')) %>%
   mutate(block= 9, dataset = 'firm_ctry_yr_lvl',fe =  "| NACE_BR + year + ctry",  cluster ='firmid',
          command = flogit_command(dataset, dep_var,ind_var, controls, fe, cluster)) 
-}
 
-## Block 10: Cox survival analysis 
-{
+
+# Block 10: Cox survival analysis --------------------------
+
 block_10_controls = c(""," + log_dom_turnover", "+ log_num_other_markets_export + log_dom_turnover",
                       paste0('*first_',c('export', 'ctry'), '_streak + log_num_other_markets_export + log_dom_turnover'))
                     
@@ -160,7 +167,13 @@ block_10 = expand(dep_var = c('is_first_export_year', 'streak_ends'), block_1_in
          cluster = 'firmid',
          command = fcox_command(dataset, dep_var, ind_var, controls, fe, cluster, time_var),
          first_export = NULL)
-}
+
+
+
+
+# combine and run  --------------------------------------------------------
+
+
 
 # combine together all the variations 
 variations = list(); for(block in paste0('block_',1:10)) variations = append(variations, list(get(block))); 
@@ -177,7 +190,6 @@ write_rds(full_output, "3) output/4) data_summary_stats/all_output.rds")
 import_file('1) data/16_inputs_for_data_summary_stats/16f_data_x_industry_stats_censored.parquet') %>%
   write_parquet("3) output/4) data_summary_stats/data_x_industry_stats_censored.parquet")
 rm(list= setdiff(ls(), c(base_env, c('full_output','variations'))))
-
 
 # output results nicely ---------------------------------------------------
 save_for_later = T
@@ -225,5 +237,12 @@ growth_graph = bs_br[ ! is.na(quartile_share_comp_data)] %>%
   .[,.(mean_turnover = NA_mean(turnover)), by = .(max_data_quartile, year)] %>% 
   .[, growth := mean_turnover / max(mean_turnover * (year== 2009)) -1, by = max_data_quartile] %>%
   ggplot(., aes(x = year, y = growth, color = as.factor(max_data_quartile))) + geom_line()
-
 }
+
+
+
+
+
+
+
+

@@ -3,8 +3,7 @@ rm(list = ls())
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
              'arrow', 'fixest')
-lapply(packages, function(package){
-  tryCatch({library(package,character.only = T)}, error = function(cond){
+lapply(packages, function(package){tryCatch({library(package,character.only = T)}, error = function(cond){
     install.packages(package); library(package, character.only = T)
   })})
 
@@ -101,7 +100,7 @@ birth_data = import_parquet('1) data/14_admin_birth_data.parquet')  %>% unique()
 
 
 write_parquet(birth_data,file.path(inputs_dir, '16b_complete_birth_data.parquet'))
-rm(list= setdiff(ls(), base_env))
+rm(list= setdiff(ls(), base_env)); gc()
 # generate customs data ---------------------------------------------------
 sim_vars = 'french_distance'
 french_sim = read_rds('1) data/similarity_matrices/outputs/similiarity_data.rds') %>% filter(ctry == 'FR')
@@ -139,7 +138,7 @@ customs_data = import_csv('1) data/9_customs_cleaned.csv', char_vars = 'firmid')
                   gpaste(sim_vars, c('_wgted_markets', '_wgted_value_customs'))))
 
 write_parquet(customs_data,file.path(inputs_dir, '16c_customs_for_data_summ_stats.parquet'))
-rm(list= setdiff(ls(), base_env)) 
+rm(list= setdiff(ls(), base_env)); gc()
 # generate the industry level data ----------------------------------------
 ## code for making nace code data is at  3a_make_ancillary data 
 nace_code = import_file(file.path(inputs_dir, '16d_nace_code_breakdown.csv')) %>%
@@ -216,7 +215,7 @@ industry_data_censored = industry_data %>%
   filter(!is.na(num_yearly_observations) | !is.na(num_period_observations))
 
 write_parquet(industry_data_censored,file.path(inputs_dir, '16f_data_x_industry_stats_censored.parquet'))
-rm(list= setdiff(ls(), base_env))
+rm(list= setdiff(ls(), base_env)); gc()
 # generate the firm-year level dataset  ---------------------
 ## define variable groups 
   exp_imp = c('export', 'import')
@@ -272,7 +271,7 @@ rm(list= setdiff(ls(), base_env))
 
 
 write_parquet(firm_yr_lvl,file.path(inputs_dir, '16g_firm_yr_level_summ_stats_inputs.parquet'))
-rm(list= setdiff(ls(), base_env))
+rm(list= setdiff(ls(), base_env)); gc()
 # generate firm level dataset -------------------------------------------------
 revenue_vars = c('turnover', 'dom_turnover', 'value_bs_export', 'value_customs_export')
 comp_vars =   gpaste(c("quartile_", "quartile_share_", "", "share_"), "comp_data")
@@ -321,7 +320,7 @@ firm_level_variation = rbindlist(parLapply(cl,1:num_cores, function(i){
 stopCluster(cl)
 
 write_parquet(firm_level_variation,file.path(inputs_dir, '16h_firm_level_summ_stats_inputs.parquet'))
-rm(list= setdiff(ls(), base_env))
+rm(list= setdiff(ls(), base_env)); gc()
 # generate the export-ctry year level dataset -----------------------------
 ## define varlists 
 firm_level_vars = c('firmid','year', 'NACE_BR', 'dom_turnover', 'age','markets_export','years_since_first_export',
@@ -385,7 +384,7 @@ export_data = import_file('1) data/9_customs_cleaned.csv', col_select = customs_
   .[, paste0("log_", log_vars) := lapply(.SD, asinh), .SDcols = log_vars]
   
 write_parquet(export_data,file.path(inputs_dir, '16i_export_firm_ctry_level_summ_stats_inputs.parquet'))
-rm(list= setdiff(ls(), base_env))
+rm(list= setdiff(ls(), base_env)); gc()
 
 
 

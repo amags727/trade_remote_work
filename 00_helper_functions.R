@@ -1,10 +1,33 @@
-
-
-
 # Table Cleanup ----------------------------------------------------
+reg_command = function(dataset, dep_var,ind_var, controls ="", fe,iv ="",es_period = NA,es_time_var = NA, cluster, family = 'feols'){
+  
+  ## handle the event study variables if we're doing pre_trends 
+  if(any(!is.na(es_period))){
+    year_strings = gpaste('*(',es_time_var, '==', es_period,')')
+    ind_var = str_trim(str_split(ind_var, "\\+") %>% unlist()) %>% 
+      gpaste("as.numeric(",., year_strings, ")", collapse_str = " + ")
+    if(iv != ''){ 
+      iv = str_trim(str_split(iv, "\\+") %>% unlist()) %>% 
+        gpaste("as.numeric(",., year_strings, ")", collapse_str = " + ")
+    }
+  }
+  
+  if(iv ==""){
+    command = paste0('feols( data = ',dataset, ", ", dep_var, "~", ind_var, controls, fe, ",cluster = ~", cluster, ")")
+  }else{
+    command = paste0('feols( data = ',dataset, ", ", dep_var, "~1",controls, fe, "|",ind_var, "~", iv,  ",cluster = ~", cluster, ")")
+  }
+  
+  if(family != "feols"){
+    command = gsub('feols\\(', 'feglm(', command)
+    command =  paste0(substr(command, 1, nchar(command) - 1), ", family = '", family, "')")
+  }
+  return(command)
+}
+
 evaluate_variations = function(variations, save_space = T){
  ### TRY TO RUN EACH OF THE MODELS 
-   int_output = lapply(1:nrow(variations), function(i){
+  int_output = lapply(1:nrow(variations), function(i){
     command = variations$command[i]
     model_attempt = tryCatch({eval(parse(text = command))},  error = function(e){e$message})
     
@@ -20,12 +43,13 @@ evaluate_variations = function(variations, save_space = T){
     ##### IF THE MODEL SUCCESSFULLY RAN 
     }else{ 
       failed_output = data.table()
-      variation_output =tryCatch({merge(variations[i] %>% mutate(counter = i), model_to_df(model_attempt) %>% mutate(counter = i))}, error = function(e){data.table()})
+      variation_output =tryCatch({merge(variations[i,] %>% select(-command) %>% mutate(counter = i), model_to_df(model_attempt) %>% mutate(counter = i))}, error = function(e){data.table()})
       if(nrow(variation_output) !=0 ) failed_output = data.table() else failed_output = data.table(counter = i, command = command, reason = "", short_error = "error converting to table")
       if(save_space){
         model = summary(model_attempt)
         objects_to_delete = sapply(model, object.size) %>% as.data.frame() %>% rownames_to_column() %>%
           rename_with(~c('object','size')) %>% filter(size > 10000)  %>% pull(object)
+        objects_to_delete = c(objects_to_delete, 'call_env', 'summary_flags')
         for(object in objects_to_delete) model[[object]] = NULL
       }else{
           model = model_attempt}
@@ -39,12 +63,23 @@ evaluate_variations = function(variations, save_space = T){
 }
 
 model_to_df = function(model){
-  data.frame(regressor = names(model$coefficients)) %>% mutate(
+if(!is.null(names(model$coefficients))){
+  output =  data.frame(regressor = names(model$coefficients)) %>% mutate(
     year =  as.numeric(str_extract(regressor, '\\d{4}')),
     coef = as.numeric(model$coefficients),
     se = as.numeric(summary(model)$se), 
     p_val = round(summary(model)$coeftable[, "Pr(>|t|)"],3),
     lb = coef - 1.96*se, ub = coef + 1.96*se)
+  }else{ ## primarily to handle the output from cox regressions which is formatted differently 
+    input = as.data.frame(model$coefficients)
+    output = data.frame(regressor = row.names(input)) %>% mutate(
+      year =  as.numeric(str_extract(regressor, '\\d{4}')),
+      coef =  as.numeric(input[['coef']]),
+      se = input[['robust se']],
+      p_val = round(input[['Pr(>|z|)']], 3),
+      lb = coef - 1.96*se, ub = coef + 1.96*se)
+  }
+  return(output)
 }
 
 split_var = function(table, var, replacement){
@@ -84,33 +119,132 @@ gen_table_line= function(items,space_after){
   return(line_output)
 }
 
-format_table = function(model_inputs,label, coef_names = NA, column_names = NA, custom_rows =NA,  headers = NA,
-                        divisions_before = NA, notes = NA, note_width = .5, output_path = NA, caption = 'NULL'){
-  
+
+format_table = function(model_inputs,label,  coef_names = NA, column_names = NA,
+                        custom_rows =NA, custom_row_placement = NA,  
+                        headers = NA, divisions_before = NA, notes = NA,
+                        note_width = .5, output_path = NA, caption = NULL, rescale_factor = NA, cox = F,
+                        coef_order = NA){
   num_columns = length(model_inputs)
-  custom_block = paste0(", caption = '", caption, "'")
-  if (any(!is.na(coef_names))) custom_block =paste0(custom_block, ', custom.coef.names = coef_names')
-  if (all(is.na(column_names))) column_names = gpaste('(', 1:num_columns, ")")
-  command = paste0('capture.output(texreg(model_inputs, label = paste0("tab:", label),
-            stars = c(0.01, 0.05, 0.1), include.groups = F, include.rsquared = FALSE,
-            custom.model.names = column_names, include.adjrs = FALSE, include.loglik = FALSE,
-            caption.above = T,include.deviance = F, include.pseudors =F, include.aic = FALSE,',custom_block, '))')
-  table = eval(parse(text = command))
+  # custom_block = paste0(", caption = '", caption, "'")
+  # if (any(!is.na(coef_names))) custom_block =paste0(custom_block, ', custom.coef.names = coef_names')
+  # place_holder = gpaste('(', 1:num_columns, ")")
+  # command = paste0('capture.output(texreg(model_inputs, label = paste0("tab:", label),
+  #           stars = c(0.01, 0.05, 0.1),custom.model.names = place_holder, include.groups = F, include.rsquared = FALSE, include.adjrs = FALSE, include.loglik = FALSE,
+  #           caption.above = T,include.deviance = F, include.pseudors =F, include.aic = FALSE,',custom_block, '))')
+  # 
+   num_models = length(model_inputs)
+   if(cox){ actual = lapply(model_inputs, function(model){rownames(model$coefficients)})
+   }else{  actual = lapply(model_inputs, function(model){names(model$coefficients)})}
+   actual = actual %>% unlist() %>% unique()
+   
+   if(!all(is.na(coef_names))){ coef_names = data.frame(actual = actual, in_table = coef_names) 
+   }else{ coef_names = data.frame(actual = actual, in_table = actual)}
+    unique_table_names = unique(coef_names$in_table)
+    output_matrix = matrix(data = '', nrow = 2*length(unique_table_names), ncol = length(model_inputs))
+    
+    for (i in 1:length(model_inputs)){
+      if(cox){
+        temp_model = model_inputs[[i]]$coefficients %>% as.data.frame()
+        }else{
+        temp_model = data.frame(coef = as.numeric(model_inputs[[i]]$coefficients),
+                                "se(coef)"= as.numeric(model_inputs[[i]]$se),
+                                p = as.numeric(summary(model_inputs[[i]])$coeftable[, "Pr(>|t|)"])) %>%
+          rename("se(coef)"= se.coef., 'Pr(>|z|)' = p)
+        rownames(temp_model) = names(model_inputs[[i]]$coefficients) 
+      }
+      temp_model = temp_model %>%
+        mutate(across(c(coef, `se(coef)`), ~ifelse(abs(.)<1e-3, 
+                gsub('e-0', 'e-',formatC(., format = "e", digits = 1)),
+                as.character(round(.,3))), .names = "{col}_display"),
+               coef_display = paste0(coef_display, case_when(`Pr(>|z|)` < .001 ~ "***",`Pr(>|z|)` < .01 ~'**',`Pr(>|z|)` < .05 ~ "*", T ~ "")),
+               se_display = paste0('(', `se(coef)_display`, ')'))
+      temp_model$coef_name = rownames(temp_model)
+      
+      for(j in 1:nrow(temp_model)){
+        temp_row =  coef_names %>% filter(actual ==temp_model$coef_name[j]) %>% pull(in_table) %>% .[1] 
+        temp_row  = which(unique_table_names == temp_row)*2
+        output_matrix[c(temp_row -1, temp_row),i] = c(temp_model$coef_display[j], temp_model$se_display[j])
+      }
+    }
+    
+
+    output_matrix = rbind(c("",gpaste("(", 1:length(model_inputs), ")")),
+                          cbind(as.vector(rbind(unique_table_names, "")), output_matrix),
+                          c("Num. Obs",lapply(model_inputs,function(model){
+                            ifelse(cox,as.character(model$n), as.character(model$nobs))}) %>% unlist()))
+    
+    table = capture.output(kable(output_matrix , format = "latex", booktabs = TRUE))
+    table[2] =  gsub("\\\\begin\\{tabular\\}\\{l", "", table[2]) %>%
+      gsub('l', 'c',.) %>% paste0("\\begin{tabular}{l",.) 
+    
+    intro_rows = c("", "\\begin{table}[h]",paste0("\\caption{",caption,"}"), "\\begin{center}") 
+    end_rows = c(paste0('\\label{',label,'}'), '\\end{center}','\\end{table}')
+    table = c(intro_rows, table[-1], end_rows) %>% gsub('toprule', 'hline', .) %>%
+      gsub('bottomrule', 'hline',.)
+    
+    p_values = paste0("\\multicolumn{", num_models+1,"}{l}{\\scriptsize{$^{***}p<0.001$; $^{**}p<0.01$; $^{*}p<0.05$}}")
+    table = append(table, '\\hline', after =  which(grepl("& \\(1\\) & \\(2\\)", table))[1] )
+    table = append(table, '\\hline', after = which(grepl('Num. Obs', table))[1]-1)
+    table = append(table, p_values, after = which(grepl('Num. Obs', table))[1]+1)
+    
+    table = table %>% .[. !="\\addlinespace" ]
+  
+
+  ### fix column names 
+  if (any(!is.na(column_names))){
+    name_line = which(grepl("& \\(1\\) & \\(2\\)", table))[1] 
+    table = table[-name_line]
+    num_lines = max(str_count(column_names,"\\n")) +1 
+    name_vectors = lapply(1:num_lines, function(i){ rep("", length(column_names))})
+    for (i in 1:length(column_names)){
+      name = strsplit(column_names[i], '\\n')[[1]]
+      for (j in 1:length(name)) name_vectors[[j]][i] = name[j]
+    }
+    for (i in rev(1:length(name_vectors))){
+      table = append(table,paste0(paste(c(" ",name_vectors[[i]]), collapse = "&"),"\\\\"),
+                     after = name_line - 1)
+    }
+  }
+  
+  ### Reorder data columns 
+  if (!all_NA(coef_order)){
+    inner_portion = c()
+    for (i in 1:length(coef_order)){
+      j = coef_order[i]
+      inner_portion = c(inner_portion,(j-1)*2+1, (j-1)*2+2)
+    }
+    start_of_vars = (which(table == '\\hline')[2] + 1)
+    end_of_vars = (which(table == '\\hline')[3] -1)
+    table = c(table[1:(start_of_vars - 1)],
+              table[start_of_vars:end_of_vars][inner_portion],
+              table[(end_of_vars+1): length(table)])
+    
+  }
   
   ### Add custom rows 
   table = append(table, "[1em]", after = (which(table == "\\hline")[3]-1))
   if (any(!is.na(custom_rows))){
+    if (all_NA(custom_row_placement)){custom_row_placement = rep(NA,length(custom_rows))}
     for (i in 1:length(custom_rows)){
+      after_loc = ifelse(is.na(custom_row_placement[i]), (which(table == "\\hline")[3]-1), 
+                         custom_row_placement[i])
       table = append(table,paste0(paste(custom_rows[[i]], collapse = " & "),"\\\\"),
-                     after = (which(table == "\\hline")[3]-1))
+                     after = after_loc)
     }
+    
   } 
   ### Insert Divisions for Ease of Reading 
-  if (!is.na(divisions_before)){
-    table[5] = gsub("\\}\\{l", '}{l c', table[5])
-    for (i in 1:length(table)){
-      table[i] = insert_column_space(table[i],divisions_before,num_columns)
-    }}
+  if (!all_NA(divisions_before)){
+    table[5] = gsub("\\}\\{l",paste0('}{l ', paste(rep('c', length(divisions_before)), collapse = '')), table[5])
+    divisions_before = sort(divisions_before)
+    for (j in 1:length(divisions_before)){
+      division_placement = divisions_before[j] + (j-1)
+      for (i in 1:length(table)){
+        table[i] = insert_column_space(table[i],division_placement,num_columns + (j-1))
+      }
+    }
+    }
   ### Add Headers 
   if (!is.na(headers)){table<- append(table, headers, after = 6)}
   
@@ -128,17 +262,30 @@ format_table = function(model_inputs,label, coef_names = NA, column_names = NA, 
     table[notes_index] = note_line
   }
   
-  
-  
-  
   ### Update so that the table actually shows up where it's supposed to
   table[2] = "\\begin{table}[h]"    
+  
+  ### remove caption if not using it 
+  if (is.null(caption)) table = table[-3]
+  if (!is.na(rescale_factor)){
+    table = append(table, paste0( "\\begin{adjustbox}{width=",rescale_factor,
+                                  "\\textwidth, totalheight=\\textheight-2\\baselineskip,keepaspectratio}"),
+                   after = grep("begin{center}", table, fixed = T)[1]) 
+    table = append(table, "\\end{adjustbox}", after = grep("end{tabular}", table, fixed = T)[1]) 
+  }else{
+    table = append(table, "",   after = grep("begin{center}", table, fixed = T)[1]) 
+    table = append(table, "", after =  grep("end{tabular}", table, fixed = T)[1])
+  }
+  
+  ## fix the way function interpets hspace 
+  table = gsub("pt\\\\}", "pt}",gsub('textbackslash\\{\\}hspace\\\\', 'hspace', table))
   if (is.na(output_path)){
     return(table)
   }else{
     writeLines(table, output_path)
   }
 }
+
 format_summary_table = function(base_table, divisions_before = NA, headers = NA,
                                 notes = NA, note_width = .5,output_path =NA){
   kable(base_table, format = "latex", booktabs = TRUE) %>% cat(., file = "table.tex")
@@ -176,6 +323,23 @@ format_summary_table = function(base_table, divisions_before = NA, headers = NA,
     writeLines(table, output_path)
   }
 }
+
+
+pretrend_graph = function(data, x_var, group_var, legend_placement = 'bottom', 
+                          subtitle = element_blank(), legend_name = element_blank(),
+                          base_year_added = NA, y_label = element_blank(), x_label = element_blank()){
+  data$group_var = data[[group_var]]; data$x_var = data[[x_var]]
+  
+  if (!is.na(base_year_added)){
+    addition = data.table(x_var = base_year_added, group_var = unique(data$group_var),
+                          coef = 0, ub = 0, lb = 0)
+    data = rbindlist(list(data, addition), use.names = T, fill = T)
+  }
+  graph = ggplot(data, aes(x = x_var, y= coef, group = group_var, color = group_var)) + 
+    geom_line(size = 1) + geom_ribbon(aes(ymin = lb, ymax = ub, fill = group_var), color = NA, alpha = .2) +
+    guides(fill = 'none') + labs(subtitle = subtitle, x = x_label, y = y_label,
+                                 color = legend_name) + theme(legend.position = legend_placement)
+  return(graph)}
 
 # dummy variable makers ---------------------------------------------------
 
@@ -240,7 +404,31 @@ simulate_continuous_vars = function(data, data_dummy, group_vars, interest_vars)
 
 
 # misc --------------------------------------------------------------------
-sub_regression = function(...,output_model= F, predicted = F, residuals = F, ssr = F){
+
+
+con_fil = function(vector,...,or = T, inc = T){
+
+  strings = c(...)
+  
+  if (inc){
+  if(or){output = unique(unlist(lapply(strings, function(string){vector[grepl(string, vector)]})))
+  }else{
+    output = vector 
+    for(string in strings) output = output[grepl(string, output)]
+  }
+  }else{
+    output = setdiff(vector,  unique(unlist(lapply(strings, function(string){vector[grepl(string, vector)]}))))
+  }
+  return(output)
+}
+
+
+
+
+
+sub_regression = function(...,output_model= F, predicted = F,
+                          residuals = F, ssr = F, r_squared = F, 
+                          asr = F){
   col_list = list(...)
   
   max_length <- max(sapply(col_list, length))
@@ -250,17 +438,26 @@ sub_regression = function(...,output_model= F, predicted = F, residuals = F, ssr
     length(col) <- max_length  # Expands or truncates the vector
     return(col)
   })
-  df <- as.data.table(do.call(cbind, col_list)) %>% na.omit()
+  df <- as.data.table(do.call(cbind, col_list)) 
   
-  if(nrow(df)<= length(col_list)) return(NA_real_) 
+  if(nrow(df %>% na.omit())<= length(col_list)) return(NA_real_) 
   command = paste0('model = lm(data = df, V1 ~',
                    gpaste('V',2:length(col_list), collapse_str = "+" ),
                    ")")
   eval(parse(text = command))
+  if(r_squared) return(summary(model)[['r.squared']])
   if(output_model) return(model)
-  if(predicted) return(predict(model) %>% as.data.frame() %>% .[,1])
-  if(residuals) return(resid(model))
   if(ssr) return(sum(resid(model)^2))
+  if(asr) return(mean(resid(model)^2))
+  if(predicted){output = predict(model) %>% as.data.frame()}
+  if(residuals){output = resid(model) %>% as.data.frame()}
+  if(predicted | residuals){
+    output = rownames_to_column(output,"index") %>% 
+      mutate(index = as.numeric(index)) %>%
+      merge(data.frame(index = 1:max_length), all = T) %>%
+      .[,2]
+    return(output)
+    }
 }
 
 expand = function(..., names, order = NULL){
@@ -300,37 +497,41 @@ gpaste <- function(..., order = NA, collapse_str = NA, no_expand = F) {
   if (!is.na(collapse_str)) output = paste(output, collapse = collapse_str)
   return(output)
 }
-import_parquet = function(file, col_select = NULL, data_table = T){
-  if (!is.null(col_select)){
-    file = read_parquet(file, col_select = col_select)
-  } else{
-    file = read_parquet(file)
+
+
+import_file <- function(filepath, col_select = NULL, data_table = T, char_vars = NULL, nrows = Inf){
+  import_csv = function(file, col_select = NULL, char_vars = NULL, nrows = Inf){
+    if(!is.null(col_select)) col_select = paste0(", select = c('", paste(col_select, collapse = "','"), "')")
+    if(!is.null(char_vars)) char_vars =  paste0(", colClasses = list(character=  c('", 
+                                                paste(char_vars, collapse = "','"), "'))")
+    command = paste0("fread('",file,"'", col_select, char_vars,', nrows =',nrows, ")")
+    return(eval(parse(text = command)))
   }
   
-  if (data_table) file = as.data.table(file)
-  return(file)
-}
-import_csv = function(file, col_select = NULL, char_vars = NULL){
-  if(!is.null(col_select)) col_select = paste0(", select = c('", paste(col_select, collapse = "','"), "')")
-  if(!is.null(char_vars)) char_vars =  paste0(", colClasses = list(character=  c('", 
-                                              paste(char_vars, collapse = "','"), "'))")
-  command = paste0("fread('",file,"'", col_select, char_vars, ")")
-  return(eval(parse(text = command)))
-}
-
-import_file <- function(filepath, col_select = NULL, data_table = T, char_vars = NULL){
+  import_parquet = function(file, col_select = NULL, data_table = T){
+    if (!is.null(col_select)){
+      file = read_parquet(file, col_select = col_select)
+    } else{
+      file = read_parquet(file)
+    }
+    
+    if (data_table) file = as.data.table(file)
+    return(file)
+  }
+  
   if (grepl("\\.parquet$", filepath, ignore.case = TRUE)) {
     file <- import_parquet(filepath, col_select = col_select, data_table = T) %>%
       mutate(across(char_vars, ~as.character(.)))
     } else if (grepl("\\.xlsx$|\\.xls$", filepath, ignore.case = TRUE)) {
-    file <- read_excel(filepath) %>% as.data.table()
+    file <- read_excel(filepath) %>% as.data.table() 
   } else if (grepl("\\.csv$", filepath, ignore.case = TRUE)) {
-    file <- import_csv(filepath, col_select = col_select, char_vars = char_vars)
+    file <- import_csv(filepath, col_select = col_select, char_vars = char_vars, nrows = nrows)
   } else if (grepl("\\.rds$", filepath, ignore.case = TRUE)) {
     file <- readRDS(filepath)
   } else {
     stop("Unsupported file type")
   }
+  if (nrows!= Inf) file = file[1:nrows]
   return(file)
 }
 copy_directory <- function(from_dir, to_dir) {
@@ -371,34 +572,73 @@ exclude_from = function(base_list, exclude_elements){
 }
 
 # NA_var functions 
+corect_NA_type = function(column) {
+  col_class <- class(column)
+  
+  if ("integer" %in% col_class) {
+    return(NA_integer_)
+  } else if ("numeric" %in% col_class) {  # includes "double"
+    return(NA_real_)
+  } else if ("character" %in% col_class) {
+    return(NA_character_)
+  } else if ("logical" %in% col_class) {
+    return(NA)
+  } else if ("factor" %in% col_class) {
+    if(typeof(column) == 'integer') return(NA_integer_)
+    if(typeof(column) == 'character') return(NA_character_)
+    return(NA)
+  } else if ("Date" %in% col_class) {
+    return(as.Date(NA))
+  } else if ("POSIXct" %in% col_class) {
+    return(as.POSIXct(NA))
+  } else {
+    warning(paste("Unknown type:", col_class))
+    return(NA)
+  }
+}
+
+all_NA =  function(x){
+  all(is.na(x))
+}
 {
 NA_sum = function(x){
-  ifelse(all(is.na(x)), NA_real_, sum(x,na.rm = T))
+  ifelse(all_NA(x), corect_NA_type(x), sum(x,na.rm = T))
 }
-
+NA_any = function(x){
+  ifelse(all_NA(x), corect_NA_type(x), any(x,na.rm = T))
+}
+NA_var = function(x){
+  ifelse(all_NA(x), corect_NA_type(x), var(x,na.rm = T))
+}
+NA_first = function(x){
+  ifelse(all_NA(x), corect_NA_type(x), first(x,na.rm = T))
+}
+NA_mode = function(x){
+  Mode <- function(x){
+    x = x[!is.na(x)]
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+  }  
+  ifelse(all_NA(x), corect_NA_type(x), Mode(x))
+}
 NA_mean = function(x){
-  ifelse(all(is.na(x)), NA_real_, mean(x,na.rm = T))
+  ifelse(all_NA(x), corect_NA_type(x), mean(x,na.rm = T))
 }
-
 NA_median = function(x){
-  ifelse(all(is.na(x)), NA_real_, median(x,na.rm = T))
+  ifelse(all_NA(x), corect_NA_type(x), median(x,na.rm = T))
 }
-
 NA_sd = function(x){
-  ifelse(all(is.na(x)), NA_real_, sd(x,na.rm = T))
+  ifelse(all_NA(x), corect_NA_type(x), sd(x,na.rm = T))
 }
-
 NA_max = function(x){
-  ifelse(all(is.na(x)), NA_real_, max(x,na.rm = T))
+  ifelse(all_NA(x), corect_NA_type(x), max(x,na.rm = T))
 }
-
 NA_min = function(x){
-  ifelse(all(is.na(x)), NA_real_, min(x,na.rm = T))
+  ifelse(all_NA(x), corect_NA_type(x), min(x,na.rm = T))
 }
 NA_IQR = function(x){
-  ifelse(all(is.na(x)), NA_real_, IQR(x,na.rm = T))
+  ifelse(all_NA(x), corect_NA_type(x), IQR(x,na.rm = T))
 }
-
 NA_coef_var = function(x){
   NA_sd(x)/NA_mean(x)
 }
