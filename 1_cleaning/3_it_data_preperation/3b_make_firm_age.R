@@ -13,7 +13,8 @@ br_birth_data = import_file(
   col_select = c('firmid','year')) %>% 
   na.omit() %>% unique() %>% 
   .[,.(birth_year_BS = min(year)), by = firmid] %>%
-  .[birth_year_BS == 1994, birth_year_BS := NA] #94 is the first year of our data 
+  .[,BS_observed_94 := birth_year_BS == 1994] %>% #94 is the first year of our data 
+  .[birth_year_BS == 1994, birth_year_BS := NA] 
 
 ### merge together component datasets to generate birth data 
 first_cust = c("first_import_year", "first_export_year")
@@ -27,7 +28,7 @@ birth_data = import_file('1) data/14_admin_birth_data.parquet')  %>% unique() %>
     !is.na(birth_year_BS) & is.na(birth_year_customs) ~ birth_year_BS,
     birth_year_admin <= birth_year_customs ~ birth_year_admin,
     !is.na(birth_year_admin) & is.na(birth_year_customs) ~ birth_year_admin,
-    birth_year_customs != 1993 & is.na(birth_year_admin) & is.na(birth_year_BS) ~ birth_year_customs,
+    birth_year_customs != 1993 & is.na(birth_year_admin) & is.na(birth_year_BS) &! BS_observed_94 ~ birth_year_customs,
     T ~ NA_real_)] %>% 
   .[,type := case_when(is.na(birth_year) ~ "missing",
                        birth_year == birth_year_BS ~ "BS",
