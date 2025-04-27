@@ -21,6 +21,10 @@ temp_1_export_vars = c('total_export_rev_customs', 'num_product_x_ctry_markets',
 temp_2_export_vars =  gpaste(c('empl', 'comp'),"_", c('now', 'l5', 'ever'))
 export_vars_to_zero = c('total_export_rev_customs', 'num_product_x_ctry_markets', "num_export_countries")
 compensation_type_vars = gpaste('comp_', c('french', 'engineer','data', 'rnd','stem', 'french_data'))
+vars_to_log = c('age',  'turnover','dom_turnover', 'total_export_rev_customs', 
+                gpaste(c('comp_data', 'comp_rnd', 'comp_total','comp_abroad'),c('', '_lag1')),
+                gpaste('export_mkt_avg_rev_wgted_comp_', c('now', 'l5', 'ever')))
+
 # generate firm-yr level datasets describing export activity ----------------------------------------------------------------------
 temp_1 = export_data %>%
   merge(ctry_lvl_age_data, all.x = T) %>% 
@@ -55,7 +59,9 @@ output = bs_br %>%
     adolescent = year - birth_year <= 10,
     is_first_export_year = year == first_export_year,
     currently_export = total_export_rev_customs > 0)]  %>% 
-  
+  .[,min_age := NA_min(age), by = firmid] %>% 
+  .[,young_at_start := min_age <= 5] %>% 
+
   ## add variance / churn metrics 
   variance_metrics(time_id = 'year', group_id = 'NACE_BR', ind_id = 'firmid',
                  int_id = 'dom_turnover',  birth_id = 'birth_year', logged_version = T, prefix = 'nace_',
@@ -64,7 +70,10 @@ output = bs_br %>%
   ##quartile variables 
   .[, (c("quartile_comp_data", "quartile_share_comp_data")) := 
       lapply(.SD, function(x) as.factor(ntile(x, 4))), 
-    .SDcols =c("comp_data", "share_comp_data"), by = .(NACE_BR, year)] 
+    .SDcols =c("comp_data", "share_comp_data"), by = .(NACE_BR, year)] %>% 
+  
+  ##log variables
+  .[,paste0('log_',vars_to_log) := lapply(.SD,asinh), .SDcols = vars_to_log]
 
 write_parquet(output,file.path(inputs_dir, '16c_firm_yr_lvl.parquet'))
 

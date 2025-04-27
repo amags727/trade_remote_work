@@ -1,13 +1,12 @@
 
 # import data -------------------------------------------------------------
-
 ## base data 
 bs_br = c('firmid', 'year', 'dom_turnover', 'empl', 'NACE_BR') %>% 
   import_file('1) data/3_bs_br_data.csv',char_vars =  c('firmid'), col_select = .) %>% 
   distinct(firmid,year, .keep_all = T)
 
 firm_yr_lvl =  c('firmid', 'year', 'total_export_rev_customs','num_export_countries',
-  "quartile_comp_data", "quartile_share_comp_data", "empl") %>%
+  "quartile_comp_data", "quartile_share_comp_data") %>%
   import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = .) %>%
   .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T) %>% rename_with(~c(gsub('quartile', 'nace_yr_quartile',.)))
 
@@ -18,17 +17,17 @@ indiv_mkt_rev = import_file('1) data/9_customs_cleaned.csv',
 
 
 ### birth data 
-overall_birth_data = import_file(file.path(inputs_dir, '16a_firm_lvl_birth_data.parquet'),col_select = c('birth_year', 'firmid'))  
+overall_birth_data = import_file(file.path(inputs_dir, '16a_firm_lvl_birth_data.parquet'),col_select = c('first_export_year','birth_year', 'firmid'))  
 customs_birth_data = c('firmid','ctry', 'country_entrance_year', 'exim') %>% 
   import_file(file.path(inputs_dir, '16b_firm_ctry_lvl_birth_data.parquet'), col_select = .) %>% 
   .[exim == 2 & country_entrance_year %in% year_range & ctry != 'FR'] %>% select(-exim) %>% unique()
 customs_first_obs = import_file('1) data/9_customs_cleaned.csv', char_vars =  c('firmid'), col_select = c('year', 'firmid','exim','ctry')) %>% 
   .[exim == 2] %>% select(-exim) %>% unique() %>% .[, .(first_obs_date =  min(year)), by = .(firmid,ctry)]
-
+customs_eligible = customs_birth_data[country_entrance_year %in% year_range] %>% pull(firmid) %>% unique()
 
 ### linkedin data 
 linkedin_ctry_lvl = import_file(linkedin_ctry_lvl_path) 
-linkedin_firm_lvl = c('share_comp_data','comp_french', 'comp_total', 'comp_data', 'comp_rnd', 'firmid', 'year') %>% 
+linkedin_firm_lvl = c('share_comp_data','comp_french', 'comp_total', 'comp_data', 'comp_rnd', 'firmid', 'year',  'comp_weighted_prestige') %>% 
   import_file(linkedin_basic_path, col_select = .) %>% 
   .[,first_linkedin_obs_yr := min(year), by = firmid] %>% 
   unbalanced_lag(., id_var = 'firmid', time_var = 'year', 
@@ -51,18 +50,15 @@ ctry_yr_lvl_constants = base_ctry_lvl %>%
 nace_ctry_yr_lvl_constants = base_ctry_lvl %>%
   select( 'ctry','NACE_BR', 'year', con_fil(con_fil(names(base_ctry_lvl), 'nace_mkt'),'variance', inc = F)) %>%
   unique()
-# construct data  ---------------------------------------------------------
-firms_in_sample = if(dummy_version){
-  unique(c(linkedin_matched_firms[1:300],
-           firm_yr_lvl[['firmid']][1:300], 
-           customs_birth_data[country_entrance_year > 2008][['firmid']][1:300]))
-}else{
-  intersect(
-  linkedin_matched_firms,
-  unique(firm_yr_lvl$firmid),
-  overall_birth_data[!is.na(birth_year)][['firmid']]
-  )} 
 
+## other params 
+vars_to_log = c('num_other_export_markets','distance_to_france', 'dom_turnover', 
+                gpaste(c('comp'), '_', c('ever', 'l5', 'now','data', 'rnd')),
+                gpaste(c('mkt_', 'nace_mkt_'), c('num_exporters','size_rev')))
+
+# construct data  ---------------------------------------------------------
+# tightened the sample since last time to only include firms that enter a market during the period 
+firms_in_sample =  intersect(linkedin_matched_firms, unique(firm_yr_lvl$firmid)) %>% intersect(.,customs_eligible)
 
 expanded_customs = expand(
   firms_in_sample,
@@ -83,6 +79,8 @@ expanded_customs = expand(
   merge(overall_birth_data, by = 'firmid') %>% 
   .[year >= birth_year] %>% 
   .[,age := year- birth_year] %>% 
+  .[,not_yet_exported := year <= first_export_year] %>% 
+  .[,young_at_start := NA_min(age)  <= 5, by = firmid] %>% 
   
   ## merge in the linkedin data 
   merge(linkedin_firm_lvl,by = c('firmid','year'), all.x = T) %>% 
@@ -108,7 +106,10 @@ expanded_customs = expand(
   merge(ctry_lvl_constants, all.x = T, by = c('ctry')) %>%
   merge(ctry_yr_lvl_constants, all.x = T, by = c('ctry', 'year')) %>%
   merge(nace_ctry_lvl_constants, all.x =T, by = c('ctry', 'NACE_BR')) %>%
-  merge(nace_ctry_yr_lvl_constants, all.x = T, by = c('ctry', 'NACE_BR', 'year'))
+  merge(nace_ctry_yr_lvl_constants, all.x = T, by = c('ctry', 'NACE_BR', 'year')) %>% 
+  
+  ## add in log data 
+  .[,paste0('log_',vars_to_log) := lapply(.SD,asinh), .SDcols =vars_to_log] 
 
 write_parquet(expanded_customs,file.path(inputs_dir, '16e_ctry_entrance.parquet'))
 
