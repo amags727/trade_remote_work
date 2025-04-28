@@ -13,10 +13,10 @@ setwd('../')
 source("2) code/00_helper_functions.R")
 
 # set parameters ----------------------------------------------------------------------
-prior_state_name = '2025_03_25_after_export'
-current_import_name = '2025_04_21_import_package'
-new_code = '2) code/1_cleaning/3_it_data_prep.R'
-cutoff_date = as.Date('2025-03-23')
+prior_state_name = '2025_04_22_after_import_to_CASD'
+current_import_name = '2025_04_27_import_package'
+new_code = c('2) code/1_cleaning/3_it_data_prep.R','2) code/2_analysis/1_run_all_analysis.R')
+cutoff_date = as.Date('2025-04-28')
 
 import_directory = paste0('4) exports-imports/imports_to_casd/', current_import_name)
 prior_state_dir = paste0('4) exports-imports/preserved_states/', prior_state_name)

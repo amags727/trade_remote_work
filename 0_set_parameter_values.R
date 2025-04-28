@@ -9,14 +9,14 @@ source('2) code/00_helper_functions.R')
 
 ## SET ADMIN PARAMETER VALUES 
 dummy_version = grepl('amagnuson', getwd());
-make_linkedin_vars_complete = F; make_randomized = F;  make_birth_data = T; make_firm_yr = T; 
+make_randomized =  grepl('amagnuson', getwd());
+make_linkedin_vars_complete = T; make_birth_data = T; make_firm_yr = T; 
 make_firm_ctry_yr = T; make_ctry_entrance = T; make_variance = T; running_regressions = T;
 inputs_dir = ('1) data/16_inputs_for_data_summary_stats')
 linkedin_ctry_lvl_path = '1) data/15_revelio_outputs/15a_matched_firm_foreign_employment.parquet'
 linkedin_basic_path = '1) data/15_revelio_outputs/15b_matched_firm_empl_and_linkedin_characteristics.parquet'
 linkedin_match_path = '1) data/15_revelio_outputs/15d_all_linkedin_matched_firmids_final.parquet'
-preserved_state = paste0(ifelse(grepl('amagnuson', getwd()), '1) preupdate data', '1) data'),'/16_inputs_for_data_summary_stats')
-  
+
 if(dummy_version & !make_randomized){
   linkedin_ctry_lvl_path = gsub('.par', '_dummy.par', linkedin_ctry_lvl_path)
   linkedin_basic_path = gsub('.par', '_dummy.par',  linkedin_basic_path)

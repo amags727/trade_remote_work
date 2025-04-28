@@ -40,7 +40,7 @@ evaluate_variations = function(variations, save_space = T){
     return(output)
   }
   
- ### TRY TO RUN EACH OF THE MODELS 
+  ### TRY TO RUN EACH OF THE MODELS 
   int_output = lapply(1:nrow(variations), function(i){
     command = variations$command[i]
     model_attempt = tryCatch({eval(parse(text = command))},  error = function(e){e$message})
@@ -54,8 +54,10 @@ evaluate_variations = function(variations, save_space = T){
       failed_output = data.table(counter = i, command = command, reason = model_attempt, short_error = short_error)
       variation_output = data.table()
       model = list()
+
+    }
     ##### IF THE MODEL SUCCESSFULLY RAN 
-    }else{ 
+    if(typeof(model_attempt) != 'character'){
       failed_output = data.table()
       variation_output =tryCatch({merge(variations[i,] %>% select(-command) %>% mutate(counter = i), model_to_df(model_attempt) %>% mutate(counter = i))}, error = function(e){data.table()})
       if(nrow(variation_output) !=0 ) failed_output = data.table() else failed_output = data.table(counter = i, command = command, reason = "", short_error = "error converting to table")
@@ -68,13 +70,18 @@ evaluate_variations = function(variations, save_space = T){
       }else{
           model = model_attempt}
     }
+    
+    #### return the outputs for this particular model 
     return(list(failed_output = failed_output, variation_output = variation_output, model = model))
   })
+  
+  ### PUT TOGETHER EACH OF THE INDIVIDUAL OUTPUT TYPES 
   variation_output = lapply(1:nrow(variations), function(i) int_output[[i]][['variation_output']]) %>% rbindlist(fill = T, use.names = T)
   model_output = lapply(1:nrow(variations), function(i) int_output[[i]][['model']])
   failed_output = lapply(1:nrow(variations), function(i) int_output[[i]][['failed_output']]) %>% rbindlist(fill = T, use.names = T)
   return(list(variation_output = variation_output, model_output = model_output, failed_output = failed_output ))
 }
+
 display_value = function(x, parens = F){
   vapply(x, function(single_x) { 
     if (is.na(single_x)){out = "NA"
