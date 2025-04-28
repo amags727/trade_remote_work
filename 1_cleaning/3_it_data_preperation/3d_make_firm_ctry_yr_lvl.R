@@ -32,6 +32,7 @@ french_distances = fread('1) data/similarity_matrices/outputs/france_distance_da
 # merge and clean  -----------------------------------------------------------
 output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #only necessary for the dummy versions (hopefully)
   rename_with(~gsub('export_','grav_',. )) %>% rename('export_rev_customs' = 'deflated_value') %>% 
+  remove_if_NA('export_rev_customs') %>% 
   
   ## focus on exports 
   .[exim == 2] %>% .[,exim := NULL] %>% 

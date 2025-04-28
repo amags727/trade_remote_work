@@ -14,7 +14,7 @@ fe = '| NACE_BR +years_observed + min_year +ctry'
 
 # setup blocks and run 
 for ( i in 1:4){
-  file_path = paste0("3) output/0_raw_output/5",letters[i],"_output_raw.rds")
+  file_path = paste0("3) output/0_raw_output/6",letters[i],"_output_raw.rds")
   interactions = c("", gpaste("*",get(paste0('interactions_',i))))
   block = expand(young_filter, interactions, names = c('dataset', 'interaction')) %>%
     rowwise() %>% mutate(command = reg_command(
