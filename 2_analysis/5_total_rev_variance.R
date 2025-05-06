@@ -1,4 +1,4 @@
-# setup -------------------------------------------------------------------
+# run regressions -------------------------------------------------------------------
 base_data = import_file(file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet'))
 dom_young_filter = gpaste('base_data',c('', '[young_at_start_dom_rev_observed == T]', '[young_at_start_dom_rev_observed == F]'))
 export_young_filter = gsub('dom_rev', 'exports', dom_young_filter)
@@ -6,12 +6,11 @@ export_young_filter = gsub('dom_rev', 'exports', dom_young_filter)
 dom_controls = '+log_dom_turnover + log_comp_rnd + comp_weighted_prestige +log_min_age_dom_rev_observed'
 export_controls = gsub('dom_rev', 'exports', paste0("+log_total_export_rev_customs", dom_controls))
 
-dom_fe = "| NACE_BR + years_dom_rev_observed + first_year_dom_rev_observed"
+dom_fe = "| NACE_BR + years_dom_rev_observed + min_first_year_dom_rev_observed"
 export_fe = gsub('dom_rev', 'exports',dom_fe)
 
 interactions_1 = c("nace_churn_rate", "nace_de_trended_log_variance_ind_lvl", "nace_de_trended_log_variance_group_lvl")
 interactions_2 = c("export_mkt_avg_rev_wgted_comp_now", "export_mkt_avg_rev_wgted_comp_l5", "export_mkt_avg_rev_wgted_comp_ever")
-
 
 
 variations = rbind(data.frame(dom = T, interaction_num = 1),
@@ -38,7 +37,14 @@ for (i in 1:nrow(variations)){
   rm(block, interaction, file_path)
 }
                      
-      
+
+# make regression output --------------------------------------------------
+interactions_1_table = gpaste(c('','\\multicolumn{1}{r}{x '),'NACE ', c('churn rate', 'avg. firm var', 'var'),
+                              order = 3:1) %>% index_paste(., grepl('multi',.), '}')
+interactions_2_table = gpaste('\\multicolumn{1}{r}{', c('currently in mkt','\\hspace{5 pt}with recent mkt exp.', 'with any mkt exp.'), "}",
+                              c('', 'x\n\\multicolumn{1}{r}{log comp data}')) %>% gsub('}x', " x}",.) 
+
+
 # clean up  ---------------------------------------------------------------
 rm(list= setdiff(ls(), base_env)); gc()
 

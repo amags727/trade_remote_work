@@ -1,7 +1,7 @@
 # Setup -------------------------------------------------------------------
 ## set parameter values 
 uncertainty_values = c("nace_churn_rate", "nace_de_trended_log_variance_ind_lvl", "nace_de_trended_log_variance_group_lvl")
-overseas_employment_vars = c("export_mkt_avg_rev_wgted_comp_now", "export_mkt_avg_rev_wgted_comp_l5", "export_mkt_avg_rev_wgted_comp_ever")
+overseas_employment_vars = gpaste('log_export_mkt_avg_rev_wgted_',c("comp_now", "comp_l5", "comp_ever"))
 young_filter = c('', '[young == T]', '[young == F]')
 young_and_export_filter = c(young_filter,'[currently_export ==T]','[currently_export ==T & young == T]','[currently_export ==T & young == F]')
 entry_filter = gpaste('[year <= first_export_year ', c("", gpaste('& young_at_start ==',c('T','F'))),']')
@@ -25,7 +25,6 @@ block_2a = expand(young_filter,c('',gpaste('*',uncertainty_values)),names = c('f
               cluster = 'firmid'))
 
 if (running_regressions){write_rds(evaluate_variations(block_2a),"3) output/0_raw_output/2a_output_raw.rds")}else{
-
 ## output results 
 block_2a_output = read_rds("3) output/0_raw_output/2a_output_raw.rds")
 for (name in names(block_2a_output)) assign(name, block_2a_output[[name]])
@@ -73,7 +72,7 @@ table = format_table(model_inputs, label = label, header = age_header,
                                      gpaste('\\hspace{5 pt} x NACE ', c('churn rate', 'var', 'avg firm var'))),
                      notes = ' Robust standard errors clustered at the firm level. All regressions include industry and year FE.',
                      note_width = 1.2
-)
+                     )
 }
 }
 # 2c) total export revenue x avg foreign emp ------------------------------------------------
@@ -94,11 +93,11 @@ for (name in names(block_2c_output)) assign(name, block_2c_output[[name]])
 label = '2c_export_rev_x_foreign_employment'
 table = format_table(model_output, label = label, header = age_header,
                      divisions_before = c(5,9), rescale_factor = 1,
-                     output_path = 'hi.tex',  #output_path = paste0("3) output/", label,'.tex'),
+                     output_path = paste0("3) output/", label,'.tex'),
                      coef_order = c(1, 6:11, 2:5),
                      spacer_size = .25,
                      custom_row_placement = 10,
-                     custom_rows =   list(c('Comp. for employees:', rep('', 12))),
+                     custom_rows =   list(c('Log comp. for employees:', rep('', 12))),
                      coef_names =   c('log comp data', 'log dom. revenue' , 'log comp r\\&d', 'log age',
                                       'avg worker\nprestige',
                                       gpaste('\\multicolumn{1}{r}{', c('currently in mkt','\\hspace{5 pt}with recent mkt exp.', 'with any mkt exp.'), "}",
@@ -107,6 +106,7 @@ table = format_table(model_output, label = label, header = age_header,
                      note_width = 1.2
 )
 }
+
 # 2d) likelihood of entry into exporting ----------------------------------
 block_2d =  expand(entry_filter, c('',gpaste('*',c('log_comp_abroad',uncertainty_values))), names = c('filter', 'interaction')) %>%
   rowwise() %>% mutate(command = 
@@ -119,9 +119,29 @@ block_2d =  expand(entry_filter, c('',gpaste('*',c('log_comp_abroad',uncertainty
               cluster = 'firmid',
               family = 'cox'))
 
-if (running_regressions) write_rds(evaluate_variations(block_2d),"3) output/0_raw_output/2d_output_raw.rds")
+if (running_regressions){write_rds(evaluate_variations(block_2d),"3) output/0_raw_output/2d_output_raw.rds")}else{
 block_2d_output = read_rds("3) output/0_raw_output/2d_output_raw.rds")  
 for (name in names(block_2d_output)) assign(name, block_2d_output[[name]])
+
+label = '2d_likelihood_of_entry_into_exporting'
+table = format_table(model_output,
+                     label = label,
+                     header = gsub('\\{4\\}','{5}',age_header),
+                     divisions_before = c(6,11), rescale_factor = 1,
+                     output_path = paste0("3) output/", label,'.tex'),
+
+                     coef_order = c(1,6,8,10,12,5,7,9,11,2:4),       
+                     coef_names =  c('log comp data', 'log dom. revenue' , 'log comp r\\&d',
+                                     'avg worker\nprestige', 
+                                     gpaste(c('', '\\hspace{5 pt} x '),
+                                     c('log comp abroad',
+                                     gpaste('NACE ', c('churn rate', 'var', 'avg firm var'))), order = 2:1)),
+                     notes = ' Robust standard errors clustered at the firm level. All regressions include industry and year FE.',
+                     note_width = 1.2,
+                     cox = T,
+                     final_commands = 'table= table[-c(22:27)]'
+                     )
+}
 
 # clean up  ---------------------------------------------------------------
 rm(list= setdiff(ls(), base_env)); gc()
