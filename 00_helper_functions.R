@@ -119,17 +119,17 @@ reshape_to_summary = function(base_data, int_vars, key_variable, eliminate_na = 
       mutate(var = ifelse(endsWith(var, 'sd'), '', var)))
   return(hi)
 }
-model_coef = function(model_output){
-  return(unique(unlist(lapply(model_output, function(model){names(model$coefficients)}))))
+model_coef = function(model_output, cox = F){
+  if(!cox) return(unique(unlist(lapply(model_output, function(model){names(model$coefficients)}))))
+  if(cox)  return(unique(unlist(lapply(model_output, function(model){rownames(model$coefficients)}))))
 }
 
 # format table  -----------------------------------------------------------
-
 format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_names = NA, column_names = NA,
                         custom_rows =NA, custom_row_placement = NA,  
                         headers = NA, divisions_before = NA, notes = NA,
                         note_width = .5, output_path = NA, caption = NULL, rescale_factor = NA, spacer_size = NA,
-                        coef_order = NA, cox = F){
+                        coef_order = NA, cox = F,make_pdf= T, final_commands = NA_character_){
   if(!all_NA(coef_names)) coef_names = gsub('\\\\\\&', 'specialampreplacement',coef_names)
   insert_column_space <- function(input_string,after_column, og_columns) {
     # Count the number of '&' characters
@@ -223,7 +223,6 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
     table = append(table, p_values, after = which(grepl('Num. Obs', table))[1]+1)
 
     table = table %>% .[. !="\\addlinespace" ]
-  
   }
   
   ## method for making the base table if we're doing making a summary table 
@@ -328,8 +327,8 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
       p_vals =  gsub("\\\\multicolumn\\{\\d+\\}\\{l\\}\\{\\\\scriptsize\\{", "", note_base) %>% 
         gsub("\\}\\}$", "", .)
       note_line = paste0(multi_col,'{\\parbox{',note_width, 
-                         '\\linewidth}{\\scriptsize\\\\ \\vspace{5 pt}', 
-                         p_vals, " ", notes, '}}}')
+                         '\\linewidth}{\\scriptsize \\vspace{5 pt}', 
+                         p_vals, " ", notes, '}}')
       table[notes_index] = note_line}else{
         pre_notes_index =   grep('end\\{tabular', table)[1] -1
         note_num_columns = num_columns +1; if(!all_NA(divisions_before)) note_num_columns = note_num_columns + length(divisions_before)
@@ -358,9 +357,22 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   ## fix the way function interpets special characters 
   table = gsub('textbackslash\\{\\}','', table ) %>% gsub('\\\\\\{', '{',.) %>% gsub('\\\\\\}', '}',.) %>% 
     gsub('specialampreplacement', '\\\\&', .) 
-  if (!is.na(output_path)){
-    writeLines(table, output_path)
+  
+  ## add any final command if necessary 
+  if (!is.na(final_commands)) eval(parse(text = final_commands))
+  
+  # output table to file 
+  if (!is.na(output_path)) writeLines(table, output_path)
+  
+  
+  if (make_pdf){
+    latex_preamble <- "\\documentclass[11pt]{article}\\usepackage{adjustbox,amsmath,amsthm,amssymb,enumitem,graphicx,dsfont,mathrsfs,float,caption,multicol,ragged2e,xcolor,changepage,hyperref,printlen,wrapfig,stackengine, fancyhdr,pdflscape,parskip}\\hypersetup{colorlinks=true, linkcolor=blue, filecolor=magenta, urlcolor=blue,}\\usepackage[margin=1in]{geometry}\\usepackage[utf8]{inputenc}\\renewcommand{\\qedsymbol}{\\rule{0.5em}{0.5em}}\\def\\lp{\\left(}\\def\\rp{\\right)}\\DeclareMathOperator*{\\argmin}{arg\\,min}\\DeclareMathOperator*{\\argmax}{arg\\,max}\\def\\code#1{\\texttt{#1}}\\newcommand\\fnote[1]{\\captionsetup{font=small}\\caption*{#1}}\\usepackage[savepos]{zref}\\raggedcolumns\\RaggedRight\\makeatletter \\makeatother\\def\\bfseries{\\fontseries \\bfdefault \\selectfont\\boldmath}\\graphicspath{{./graphics/}}"
+    cat(latex_preamble, '\\begin{document}', table, '\\end{document})',file = 'temp.tex')
+    tinytex::latexmk("temp.tex")
+    file.remove("temp.tex")
+    file.rename('temp.pdf', gsub('tex', 'pdf', output_path))
   }
+  
   return(table)
 }
 # dummy variable makers ---------------------------------------------------
@@ -496,6 +508,11 @@ expand = function(..., names, order = NULL){
   }
   return(output)
 }
+index_paste = function(x, indeces, val){
+  x[indeces] = paste0(x[indeces],val )
+  return(x)
+}
+
 
 gpaste <- function(..., order = NA, collapse_str = NA, no_expand = F) {
   # Get the list of arguments as input

@@ -1,7 +1,7 @@
 ## IMPORT PACKAGES AND HELPER FUNCTIONS 
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
-             'arrow', 'fixest', 'countrycode', 'survival')
+             'arrow', 'fixest', 'countrycode', 'survival', 'knitr', 'parallel')
 lapply(packages, function(package){tryCatch({library(package,character.only = T)}, error = function(cond){
   install.packages(package); library(package, character.only = T)
 })})
@@ -9,9 +9,11 @@ source('2) code/00_helper_functions.R')
 
 ## SET ADMIN PARAMETER VALUES 
 dummy_version = grepl('amagnuson', getwd());
-make_randomized =  grepl('amagnuson', getwd());
+make_randomized = F #grepl('amagnuson', getwd());
+running_regressions = !grepl('amagnuson', getwd());
+
 make_linkedin_vars_complete = T; make_birth_data = T; make_firm_yr = T; 
-make_firm_ctry_yr = T; make_ctry_entrance = T; make_variance = T; running_regressions = T;
+make_firm_ctry_yr = T; make_ctry_entrance = T; make_variance = T
 inputs_dir = ('1) data/16_inputs_for_data_summary_stats')
 linkedin_ctry_lvl_path = '1) data/15_revelio_outputs/15a_matched_firm_foreign_employment.parquet'
 linkedin_basic_path = '1) data/15_revelio_outputs/15b_matched_firm_empl_and_linkedin_characteristics.parquet'

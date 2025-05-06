@@ -6,7 +6,7 @@ exporter_vars = c('currently_export','total_export_rev_customs', "num_export_cou
                 "avg_products_per_ctry", 'avg_streak_age','intermarket_hhi',
                 gpaste('export_mkt_avg_comp_', c('now', 'l5', 'ever')))
 
-headers = gpaste("&",gpaste('\\multicolumn{4}{c}{',
+headers = gpaste("&",gpaste('\\multicolumn{5}{c}{',
           c('All Firms', 'Young Firms (age $<$ 5)', 'Mature Firms (age $\\ge$ 5)'), "}",
           collapse_str = "& &"),'\\\\')
 
@@ -40,34 +40,35 @@ if(!running_regressions){
 #### BALANCE SHEET VARS 
 label = '1a_balance_test_balance_sheet_vars'
 format_table(
-  summary_table_input = import_file('3) output/0_raw_output/balance_table_1.rds'),
+  summary_table_input = import_file('3) output/0_raw_output/7a_balance_table_1.rds'),
   label =  label, rescale_factor = 1,  headers = headers, spacer_size = 1, notes = notes, note_width =1.4, 
-  divisions_before = c(5,9), output_path = paste0('3) output/',label,'.tex'),
+  divisions_before = c(6,11), output_path = paste0('3) output/',label,'.tex'),
         
-  coef_names =c('total rev', 'capital', 'intangible\nassets', 'total\nemployment', 'firm age',
-                'has subsidiary', 'is subsidiary', 'is public', 'worker\nprestige'),
+  coef_names =c('total rev', 'capital', 'intangible\nassets', 'total\nemployment', 'firm age','worker\nprestige'),
   caption = 'Firm Balance Sheet Characteristics by Age and Data Use Quartile'
  )
 
 #### LINKEDIN EXPENDITURE VARS 
 label = '1b_balance_test_linkedin_vars'
 format_table(
-  summary_table_input = import_file('3) output/0_raw_output/balance_table_2.rds'),
-  label =  label, rescale_factor = 1,  headers = headers, spacer_size = 1, notes = notes, note_width =1.4, 
+  summary_table_input = import_file('3) output/0_raw_output/7b_balance_table_2.rds')[1:8, -c(6,11,16)],
+  label =  label, rescale_factor = 1,
+  headers = gsub("\\{5\\}", "{4}",headers),
+  spacer_size = 1, notes = notes, note_width =1.4, 
   divisions_before = c(5,9), output_path = paste0('3) output/',label,'.tex'),
   
-  coef_names = gpaste('\\hspace{5 pt}', rep(c('Data', 'STEM', 'R\\&D', 'Engineering'),2)),
-  custom_rows =  list(c('Total Compensation', rep('', 12)),
-                      c('Share Compensation', rep('', 12))),
-  custom_row_placement = c(8,17),
-  caption = 'Firm Employment Characteristics by Age and Data Use Quartile')
+  coef_names = gpaste('\\hspace{5 pt}', c('Data', 'STEM', 'R\\&D', 'Engineering')),
+  custom_rows =  list(c('Total Compensation', rep('', 12))),
+  custom_row_placement = 8,
+  caption = 'Firm Employment Characteristics by Age and Data Use Quartile',
+  final_commands = "table[9] =gsub('\\\\.\\\\d', '', table[9])")
  
 #### EXPORT VARIABLES 
 label = '1c_balance_test_exporter_vars'
 format_table(
-  summary_table_input = import_file('3) output/0_raw_output/balance_table_3.rds'),
+  summary_table_input = import_file('3) output/0_raw_output/7c_balance_table_3.rds'),
   label =  label, rescale_factor = 1,  headers = headers, spacer_size = .5, notes = notes, note_width =1.4, 
-  divisions_before = c(5,9), output_path = paste0('3) output/',label,'.tex'),
+  divisions_before = c(6,11), output_path = paste0('3) output/',label,'.tex'),
   custom_row_placement = 20,
   custom_rows =   list(c('\\textbf{Comp. for employees:}', rep('', 12))),
   coef_names = c('currently export', 'total export rev', 'num. export\nmarkets',
