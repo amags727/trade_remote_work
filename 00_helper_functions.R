@@ -119,10 +119,27 @@ reshape_to_summary = function(base_data, int_vars, key_variable, eliminate_na = 
       mutate(var = ifelse(endsWith(var, 'sd'), '', var)))
   return(hi)
 }
+
 model_coef = function(model_output, cox = F){
   if(!cox) return(unique(unlist(lapply(model_output, function(model){names(model$coefficients)}))))
   if(cox)  return(unique(unlist(lapply(model_output, function(model){rownames(model$coefficients)}))))
 }
+
+comp_coef_names = function(original, new){
+  if (typeof(original) == 'list'){
+    og = model_coef(original)
+    if(is.null(og)) og = model_coef(original, T)
+    original = og
+  }
+  # pad if necessary
+  max_length <- max(length(original), length(new))
+  original <- c(original, rep(NA, max_length - length(original)))
+  new <- c(new, rep(NA, max_length - length(new)))
+  
+  # show the relationship
+  View(data.frame(original = original, new = new))
+}
+
 
 # format table  -----------------------------------------------------------
 format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_names = NA, column_names = NA,
@@ -320,6 +337,8 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   
   ## UPDATE THE NOTES
   if (!all_NA(notes)){
+    
+    ## if we're doing regression analysis 
     if (all_NA(summary_table_input)){
       notes_index = grep("^{***}p", table, fixed = T)[1]
       note_base = table[notes_index]
@@ -329,11 +348,14 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
       note_line = paste0(multi_col,'{\\parbox{',note_width, 
                          '\\linewidth}{\\scriptsize \\vspace{5 pt}', 
                          p_vals, " ", notes, '}}')
-      table[notes_index] = note_line}else{
+      table[notes_index] = note_line}
+    
+    ## if we're not doing regression analysis 
+    if (!all_NA(summary_table_input)){
         pre_notes_index =   grep('end\\{tabular', table)[1] -1
         note_num_columns = num_columns +1; if(!all_NA(divisions_before)) note_num_columns = note_num_columns + length(divisions_before)
         note_line = paste0('\\multicolumn{',note_num_columns,'}{l}{\\parbox{',note_width,
-                           '\\linewidth}{\\scriptsize\\\\ \\vspace{5 pt}',
+                           '\\linewidth}{\\scriptsize \\vspace{5 pt}',
                            paste(notes, collapse = ""), "}}")
         table = append(table, note_line, after = pre_notes_index)
       }
@@ -362,16 +384,16 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   if (!is.na(final_commands)) eval(parse(text = final_commands))
   
   # output table to file 
-  if (!is.na(output_path)) writeLines(table, output_path)
-  
-  
-  if (make_pdf){
-    latex_preamble <- "\\documentclass[11pt]{article}\\usepackage{adjustbox,amsmath,amsthm,amssymb,enumitem,graphicx,dsfont,mathrsfs,float,caption,multicol,ragged2e,xcolor,changepage,hyperref,printlen,wrapfig,stackengine, fancyhdr,pdflscape,parskip}\\hypersetup{colorlinks=true, linkcolor=blue, filecolor=magenta, urlcolor=blue,}\\usepackage[margin=1in]{geometry}\\usepackage[utf8]{inputenc}\\renewcommand{\\qedsymbol}{\\rule{0.5em}{0.5em}}\\def\\lp{\\left(}\\def\\rp{\\right)}\\DeclareMathOperator*{\\argmin}{arg\\,min}\\DeclareMathOperator*{\\argmax}{arg\\,max}\\def\\code#1{\\texttt{#1}}\\newcommand\\fnote[1]{\\captionsetup{font=small}\\caption*{#1}}\\usepackage[savepos]{zref}\\raggedcolumns\\RaggedRight\\makeatletter \\makeatother\\def\\bfseries{\\fontseries \\bfdefault \\selectfont\\boldmath}\\graphicspath{{./graphics/}}"
-    cat(latex_preamble, '\\begin{document}', table, '\\end{document})',file = 'temp.tex')
-    tinytex::latexmk("temp.tex")
-    file.remove("temp.tex")
-    file.rename('temp.pdf', gsub('tex', 'pdf', output_path))
-  }
+  if (!is.na(output_path)){
+    writeLines(table, output_path)
+
+    if (make_pdf){
+      latex_preamble <- "\\documentclass[11pt]{article}\\usepackage{adjustbox,amsmath,amsthm,amssymb,enumitem,graphicx,dsfont,mathrsfs,float,caption,multicol,ragged2e,xcolor,changepage,hyperref,printlen,wrapfig,stackengine, fancyhdr,pdflscape,parskip}\\hypersetup{colorlinks=true, linkcolor=blue, filecolor=magenta, urlcolor=blue,}\\usepackage[margin=1in]{geometry}\\usepackage[utf8]{inputenc}\\renewcommand{\\qedsymbol}{\\rule{0.5em}{0.5em}}\\def\\lp{\\left(}\\def\\rp{\\right)}\\DeclareMathOperator*{\\argmin}{arg\\,min}\\DeclareMathOperator*{\\argmax}{arg\\,max}\\def\\code#1{\\texttt{#1}}\\newcommand\\fnote[1]{\\captionsetup{font=small}\\caption*{#1}}\\usepackage[savepos]{zref}\\raggedcolumns\\RaggedRight\\makeatletter \\makeatother\\def\\bfseries{\\fontseries \\bfdefault \\selectfont\\boldmath}\\graphicspath{{./graphics/}}"
+      cat(latex_preamble, '\\begin{document}', table, '\\end{document})',file = 'temp.tex')
+      tinytex::latexmk("temp.tex")
+      file.remove("temp.tex")
+      file.rename('temp.pdf', gsub('tex', 'pdf', output_path))
+    }}
   
   return(table)
 }

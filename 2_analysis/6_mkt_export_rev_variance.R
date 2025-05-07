@@ -34,7 +34,7 @@ for ( i in 1:4){
 
 # run regressions  --------------------------------------------------------
 table_notes =  ' Robust standard errors clustered at the firm level. All regressions include industry, country, streak duration, and streak start year FE'
-base = c(gpaste('log ', c('comp data', 'log mkt rev', 'dom.\nrevenue','age', 'comp r\\&d')),  'avg worker\nprestige')
+base = c(gpaste('log ', c('comp data', 'mkt rev', 'dom.\nrevenue','age', 'comp r\\&d')),  'avg worker\nprestige')
 interactions_1_table = gpaste(c('', '\\hspace{5 pt} x '), 
                               c('log num markets', 'first time in market', 'first time exporting'),
                               order = 2:1)
