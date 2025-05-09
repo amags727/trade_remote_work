@@ -1,0 +1,54 @@
+# run regressions -------------------------------------------------------------------
+#base_data = import_file(file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet'))
+base_data = rbindlist(lapply(list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE),import_file))
+
+dom_young_filter = gpaste('base_data',c('', '[young_at_start_dom_rev_observed == T]', '[young_at_start_dom_rev_observed == F]'))
+export_young_filter = gsub('dom_rev', 'exports', dom_young_filter)
+
+dom_controls = '+log_dom_turnover + log_comp_rnd + comp_weighted_prestige +log_min_age_dom_rev_observed'
+export_controls = gsub('dom_rev', 'exports', paste0("+log_total_export_rev_customs", dom_controls))
+
+dom_fe = "| NACE_BR + years_dom_rev_observed + min_first_year_dom_rev_observed"
+export_fe = gsub('dom_rev', 'exports',dom_fe)
+
+interactions_1 = c("nace_churn_rate", "nace_de_trended_log_variance_ind_lvl", "nace_de_trended_log_variance_group_lvl")
+interactions_2 = c("export_mkt_avg_rev_wgted_comp_now", "export_mkt_avg_rev_wgted_comp_l5", "export_mkt_avg_rev_wgted_comp_ever")
+
+
+variations = rbind(data.frame(dom = T, interaction_num = 1),
+      expand(c(F),1:2, names = c('dom', 'interaction_num')))
+
+for (i in 1:nrow(variations)){
+  for (name in names(variations)) assign(name, variations[[name]][i])
+  file_path = paste0("3) output/0_raw_output/5",letters[i],"_output_raw.rds")
+  filter = if(dom) dom_young_filter else export_young_filter
+  interaction = c("", gpaste("*",get(paste0('interactions_', interaction_num))))
+  
+  block = expand(filter, interaction, names = c('dataset', 'interaction')) %>%
+    rowwise() %>% mutate(command =reg_command(
+      dataset,
+      dep_var = paste0('detrended_var_log_', ifelse(dom,'dom_turnover', 'total_export_rev_customs')),
+      ind_var = 'log_comp_data', 
+      controls = paste0(interaction,ifelse(dom, dom_controls, export_controls)),
+      fe = ifelse(dom, dom_fe, export_fe),
+      cluster = "NACE_BR"))
+  
+  if (running_regressions) write_rds(evaluate_variations(block),file_path)
+  assign(paste0('block_5',letters[i]),block)
+  assign(paste0('block_5',letters[i],'_output'),read_rds(file_path))
+  rm(block, interaction, file_path)
+}
+                     
+
+# make regression output --------------------------------------------------
+interactions_1_table = gpaste(c('','\\multicolumn{1}{r}{x '),'NACE ', c('churn rate', 'avg. firm var', 'var'),
+                              order = 3:1) %>% index_paste(., grepl('multi',.), '}')
+interactions_2_table = gpaste('\\multicolumn{1}{r}{', c('currently in mkt','\\hspace{5 pt}with recent mkt exp.', 'with any mkt exp.'), "}",
+                              c('', 'x\n\\multicolumn{1}{r}{log comp data}')) %>% gsub('}x', " x}",.) 
+
+
+# clean up  ---------------------------------------------------------------
+rm(list= setdiff(ls(), base_env)); gc()
+
+
+  

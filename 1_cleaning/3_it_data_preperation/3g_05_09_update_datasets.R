@@ -24,5 +24,8 @@ write_parquet(base,file.path(inputs_dir, '16c_firm_yr_lvl.parquet'))
 
 rm(list= setdiff(ls(), base_env)); gc()
  
+
+
+
    
 
