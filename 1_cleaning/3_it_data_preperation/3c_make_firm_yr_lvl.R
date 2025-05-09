@@ -24,7 +24,7 @@ compensation_type_vars = gpaste('comp_', c('french', 'engineer','data', 'rnd','s
 vars_to_log = c('age',  'turnover','dom_turnover', 'total_export_rev_customs', 
                 gpaste(c('comp_data', 'comp_rnd', 'comp_total','comp_abroad'),c('', '_lag1')),
                 gpaste('export_mkt_avg_rev_wgted_comp_', c('now', 'l5', 'ever')))
-
+d_vars = c("comp_data", "share_comp_data")
 # generate firm-yr level datasets describing export activity ----------------------------------------------------------------------
 temp_1 = export_data %>%
   merge(ctry_lvl_age_data, all.x = T) %>% 
@@ -67,11 +67,16 @@ output = bs_br %>%
                  int_id = 'dom_turnover',  birth_id = 'birth_year', logged_version = T, prefix = 'nace_',
                  full_dataset = T) %>% 
 
-  ##quartile variables 
-  .[, (c("quartile_comp_data", "quartile_share_comp_data")) := 
-      lapply(.SD, function(x) as.factor(ntile(x, 4))), 
-    .SDcols =c("comp_data", "share_comp_data"), by = .(NACE_BR, year)] %>% 
+  # generate comparison vars 
+  .[, (gpaste(d_vars, '_nace_quartile')) := lapply(d_vars, function(x) as.factor(ntile(get(x), 4))), by = .(NACE_BR, year)] %>%
+  .[, (gpaste(d_vars,'_nace_pct_rank')) := lapply(d_vars, function(x) percent_rank(get(x))), by = .(NACE_BR, year)] %>%
+  .[, (gpaste(d_vars,'_nace_sd_from_mean')) := lapply(d_vars, function(x)(get(x)- NA_mean(get(x)))/ NA_sd(get(x))), by = .(NACE_BR, year)] %>%
   
+  # generate comparison vars (age)
+  .[, (gpaste(d_vars, '_nace_quartile_age')) := lapply(d_vars, function(x) as.factor(ntile(get(x), 4))), by = .(NACE_BR, year,young)] %>%
+  .[, (gpaste(d_vars,'_nace_pct_rank_age')) := lapply(d_vars, function(x) percent_rank(get(x))), by = .(NACE_BR, year,young)] %>%
+  .[, (gpaste(d_vars,'_nace_sd_from_mean_age')) := lapply(d_vars, function(x)(get(x)- NA_mean(get(x)))/ NA_sd(get(x))), by = .(NACE_BR, year,young)] %>%
+
   ##log variables
   .[,paste0('log_',vars_to_log) := lapply(.SD,asinh), .SDcols = vars_to_log]
 
