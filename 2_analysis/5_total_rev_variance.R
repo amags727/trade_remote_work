@@ -1,5 +1,7 @@
 # run regressions -------------------------------------------------------------------
-base_data = import_file(file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet'))
+#base_data = import_file(file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet'))
+base_data = rbindlist(lapply(list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE),import_file))
+
 dom_young_filter = gpaste('base_data',c('', '[young_at_start_dom_rev_observed == T]', '[young_at_start_dom_rev_observed == F]'))
 export_young_filter = gsub('dom_rev', 'exports', dom_young_filter)
 

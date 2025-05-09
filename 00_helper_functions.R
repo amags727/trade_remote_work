@@ -461,7 +461,7 @@ simulate_continuous_vars = function(data, data_dummy, group_vars, interest_vars)
 
 # misc --------------------------------------------------------------------
 con_fil = function(vector,...,or = T, inc = T){
-
+  if (typeof(vector) == 'list') vector = names(vector)
   strings = c(...)
   
   if (inc){
