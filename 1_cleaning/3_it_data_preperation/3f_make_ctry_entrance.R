@@ -22,7 +22,7 @@ bs_br = c('firmid', 'year', 'dom_turnover', 'empl', 'NACE_BR') %>%
   distinct(firmid,year, .keep_all = T)
 
 firm_yr_lvl =  c('firmid', 'year', 'total_export_rev_customs','num_export_countries',
-  "quartile_comp_data", "quartile_share_comp_data") %>%
+                 gpaste(c('comp_data', 'share_comp_data'),"_nace_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))) %>%
   import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = .) %>%
   .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T) %>% rename_with(~c(gsub('quartile', 'nace_yr_quartile',.)))
 
@@ -78,7 +78,8 @@ vars_to_log = c('num_other_export_markets','distance_to_france', 'dom_turnover',
 
 # construct piecewise output---------------------------------------------------------
 dir.create('1) data/temp_data')
-chunk_list <- split(firms_in_sample, cut(seq_along(firms_in_sample), breaks = 1000, labels = FALSE))
+if (dummy_version){num_breaks = 2}else{num_breaks = 1000}
+chunk_list <- split(firms_in_sample, cut(seq_along(firms_in_sample), breaks = num_breaks, labels = FALSE))
 lapply(1:length(chunk_list), function(chunk_num){
   if (!file.exists(paste0('1) data/temp_data/data',chunk_num,'.csv'))){
   firm_chunk = chunk_list[[chunk_num]]

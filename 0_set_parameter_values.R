@@ -14,7 +14,7 @@ source('2) code/00_helper_functions.R')
   
   make_linkedin_vars_complete = T; make_birth_data = T; make_firm_yr = T; 
   make_firm_ctry_yr = T; make_ctry_entrance = T; make_variance = T
-  inputs_dir = ('1) data/16_inputs_for_data_summary_stats')
+  inputs_dir = ('1) data/16_inputs_for_data_summary_stats/')
   linkedin_ctry_lvl_path = '1) data/15_revelio_outputs/15a_matched_firm_foreign_employment.parquet'
   linkedin_basic_path = '1) data/15_revelio_outputs/15b_matched_firm_empl_and_linkedin_characteristics.parquet'
   linkedin_match_path = '1) data/15_revelio_outputs/15d_all_linkedin_matched_firmids_final.parquet'

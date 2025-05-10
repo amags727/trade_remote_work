@@ -54,7 +54,6 @@ write_parquet(firm_lvl_collapsed_variance, file.path(inputs_dir, '16f_firm_lvl_c
 rm(list= setdiff(ls(), base_env)); gc()
 
 # make firm ctry lvl version -----------------------------------------------------------------------
-
 firm_ctry_yr_lvl = import_file(file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parquet')) %>% 
   remove_if_NA(., 'year', 'export_rev_customs', 'comp_data') %>%
   .[year %in% year_range] %>% distinct(firmid, year, ctry, .keep_all = T) %>% 

@@ -95,7 +95,7 @@ output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #on
   .[,paste0('log_',base_data_to_log) := lapply(.SD,asinh), .SDcols =base_data_to_log]
 
   # add final comparison variables 
-  for (i in length(divisions_list)){inner = divisions_list[[i]][[1]]; outer = ''; group = divisions_list[[i]][[2]]
+  for (i in 1:length(divisions_list)){inner = divisions_list[[i]][[1]]; outer = ''; group = divisions_list[[i]][[2]]
   for (j in 1:2){if (j ==2){outer = "_age"; group = c(group,'young')}
     output = output %>% 
       .[, (gpaste(d_vars,'_',inner,'_pct_rank',outer)) := lapply(d_vars, function(x) percent_rank(get(x))), by = group] %>%
