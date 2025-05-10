@@ -22,17 +22,16 @@ if (running_regressions){
 balance_table_1 = cbind(reshape_to_summary(base_data, base_vars, 'comp_data_nace_quartile'),
                      reshape_to_summary(base_data[young == T], base_vars, 'comp_data_nace_quartile_age')[-1],
                      reshape_to_summary(base_data[young == F], base_vars, 'comp_data_nace_quartile_age')[-1])
-write_rds(balance_table_1,'3) output/0_raw_output/7a_balance_table_1.rds')
 
 balance_table_2 = cbind(reshape_to_summary(base_data, linkedin_vars, 'comp_data_nace_quartile'),
                         reshape_to_summary(base_data[young == T],  linkedin_vars, 'comp_data_nace_quartile_age')[-1],
                         reshape_to_summary(base_data[young == F],  linkedin_vars, 'comp_data_nace_quartile_age')[-1])
-write_rds(balance_table_2,'3) output/0_raw_output/7b_balance_table_2.rds')
 
 balance_table_3 = cbind(reshape_to_summary(base_data, exporter_vars, 'comp_data_nace_quartile'),
                         reshape_to_summary(base_data[young == T],  exporter_vars, 'comp_data_nace_quartile_age')[-1],
                         reshape_to_summary(base_data[young == F],  exporter_vars, 'comp_data_nace_quartile_age')[-1])
-write_rds(balance_table_3,'3) output/0_raw_output/7c_balance_table_3.rds')
+write_rds(list(balance_table_1 = balance_table_1, balance_table_2 = balance_table_2, balance_table_3 = balance_table_3),
+          paste0(raw_output_dir,'block_1.rds'))
 }
 
 # output the results  -----------------------------------------------------

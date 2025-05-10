@@ -6,13 +6,17 @@ linkedin_to_log = setdiff(linkedin_vars, c('firmid', 'year', 'weighted_prestige'
 base_data_to_log =  c('num_markets','distance_to_france','age', 'dom_turnover', 'export_rev_customs',
                       gpaste(c('comp'), '_', c('ever', 'l5', 'now')),
                       gpaste(c('mkt_', 'nace_mkt_'), c('num_exporters','size_rev')))
+firm_yr_vars = c('firmid', 'year', 'dom_turnover', 'NACE_BR', "quartile_comp_data", "quartile_share_comp_data", "empl",
+                 'share_comp_data', gpaste(c("comp_data", "share_comp_data"),"_", c('nace', 'nace_exporter'),"_",
+                                           gpaste(c('pct_rank','sd_from_mean'),c('', "_age"))))
+d_vars = c("comp_data", "share_comp_data")
+divisions_list = list(list('nace', c('NACE_BR', 'year')),list('nace_exporter', c('NACE_BR', 'currently_export', 'year'))) 
 
 
-firm_yr_lvl =  c(
-  'firmid', 'year', 'dom_turnover', 'NACE_BR',
-  "quartile_comp_data", "quartile_share_comp_data", "empl") %>%
-  import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = .) %>%
-  .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T) %>% rename_with(~c(gsub('quartile', 'nace_yr_quartile',.)))
+
+
+firm_yr_lvl = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) %>%
+              .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T)
 
 customs_data = c('firmid', 'ctry','streak_id', 'exim', 'products', 'deflated_value',  'year',
                  gpaste('export_',c('region', 'language', 'border'))) %>%
@@ -89,6 +93,18 @@ output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #on
   
   # log necessary variables 
   .[,paste0('log_',base_data_to_log) := lapply(.SD,asinh), .SDcols =base_data_to_log]
+
+  # add final comparison variables 
+  for (i in length(divisions_list)){inner = divisions_list[[i]][[1]]; outer = ''; group = divisions_list[[i]][[2]]
+  for (j in 1:2){if (j ==2){outer = "_age"; group = c(group,'young')}
+    output = output %>% 
+      .[, (gpaste(d_vars,'_',inner,'_pct_rank',outer)) := lapply(d_vars, function(x) percent_rank(get(x))), by = group] %>%
+      .[, (gpaste(d_vars,'_',inner,'_sd_from_mean',outer)) := lapply(d_vars, function(x)(get(x)- NA_mean(get(x)))/ NA_sd(get(x))), by = group]
+  }
+  }
+
+
+
 
 write_parquet(output,file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parquet'))
 

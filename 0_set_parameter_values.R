@@ -8,22 +8,31 @@ lapply(packages, function(package){tryCatch({library(package,character.only = T)
 source('2) code/00_helper_functions.R')
 
 ## SET ADMIN PARAMETER VALUES 
-dummy_version = grepl('amagnuson', getwd());
-running_regressions = !grepl('amagnuson', getwd());
-make_randomized = F #grepl('amagnuson', getwd());
+  dummy_version = grepl('amagnuson', getwd());
+  running_regressions = !grepl('amagnuson', getwd());
+  make_randomized = F #grepl('amagnuson', getwd());
+  
+  make_linkedin_vars_complete = T; make_birth_data = T; make_firm_yr = T; 
+  make_firm_ctry_yr = T; make_ctry_entrance = T; make_variance = T
+  inputs_dir = ('1) data/16_inputs_for_data_summary_stats')
+  linkedin_ctry_lvl_path = '1) data/15_revelio_outputs/15a_matched_firm_foreign_employment.parquet'
+  linkedin_basic_path = '1) data/15_revelio_outputs/15b_matched_firm_empl_and_linkedin_characteristics.parquet'
+  linkedin_match_path = '1) data/15_revelio_outputs/15d_all_linkedin_matched_firmids_final.parquet'
+  
+  if(dummy_version & !make_randomized){
+    linkedin_ctry_lvl_path = gsub('.par', '_dummy.par', linkedin_ctry_lvl_path)
+    linkedin_basic_path = gsub('.par', '_dummy.par',  linkedin_basic_path)
+    linkedin_match_path = gsub('.par', '_dummy.par', linkedin_match_path)
+  }
+  
+  analysis_round = 3
+  output_base = paste0('3) output/',letters[analysis_round],"_round_",analysis_round,"_analysis/")
+  suppressWarnings(dir.create(output_base))
+  raw_output_dir = paste0(output_base,letters[analysis_round],"1_raw_output/")
+  finished_output_dir = paste0(output_base,letters[analysis_round],"2_finished_tables/")
+  lapply(c(raw_output_dir, finished_output_dir),function(x) suppressWarnings(dir.create(x)))
+  rm(output_base)
 
-make_linkedin_vars_complete = T; make_birth_data = T; make_firm_yr = T; 
-make_firm_ctry_yr = T; make_ctry_entrance = T; make_variance = T
-inputs_dir = ('1) data/16_inputs_for_data_summary_stats')
-linkedin_ctry_lvl_path = '1) data/15_revelio_outputs/15a_matched_firm_foreign_employment.parquet'
-linkedin_basic_path = '1) data/15_revelio_outputs/15b_matched_firm_empl_and_linkedin_characteristics.parquet'
-linkedin_match_path = '1) data/15_revelio_outputs/15d_all_linkedin_matched_firmids_final.parquet'
-
-if(dummy_version & !make_randomized){
-  linkedin_ctry_lvl_path = gsub('.par', '_dummy.par', linkedin_ctry_lvl_path)
-  linkedin_basic_path = gsub('.par', '_dummy.par',  linkedin_basic_path)
-  linkedin_match_path = gsub('.par', '_dummy.par', linkedin_match_path)
-}
 
 
 ## SET IMPORTANT PARAMETER VALUES 
@@ -34,6 +43,7 @@ set.seed(43)
 age_header =gpaste("&",gpaste('\\multicolumn{4}{c}{',
                               c('All Firms', 'Young Firms (age $<$ 5)', 'Mature Firms (age $\\ge$ 5)'), "}",
                               collapse_str = "& &"),'\\\\')
+
 ### Generate Project Specific Helper Functions
 variance_metrics = function(df,subset_id = NA, remove_NA_subset = T, 
                             time_id, group_id, ind_id, int_id, birth_id,

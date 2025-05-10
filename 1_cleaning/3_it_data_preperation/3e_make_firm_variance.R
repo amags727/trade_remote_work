@@ -2,10 +2,12 @@
 
 # generate firm level version ---------------------------------------------
 ## identify key variables 
-vars_to_mean = c('dom_turnover', 'empl', 'comp_data', 'comp_rnd', 'share_comp_data', "comp_weighted_prestige", 
+relative_vars = gpaste(c('comp_data', 'share_comp_data'),"_", c('nace', 'nace_exporter'), "_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))
+vars_to_mean = c(relative_vars, 'dom_turnover', 'empl', 'comp_data', 'comp_rnd', 'share_comp_data', "comp_weighted_prestige", 
                  'total_export_rev_customs',  "num_export_countries",  "avg_products_per_ctry", 
                  "export_mkt_avg_rev_wgted_comp_now", "export_mkt_avg_rev_wgted_comp_l5", "export_mkt_avg_rev_wgted_comp_ever",
                  "nace_churn_rate", "nace_de_trended_log_variance_ind_lvl", "nace_de_trended_log_variance_group_lvl")
+
 vars_to_min = gpaste(c('first_year', 'age'), '_', c('exports_observed', 'dom_rev_observed'))
 vars_to_mode = c('NACE_BR','empl_bucket', "quartile_comp_data", "quartile_share_comp_data")
 vars_to_any= c('young', 'adolescent')
@@ -47,7 +49,6 @@ firm_lvl_collapsed_variance =  import_file(file.path(inputs_dir, '16c_firm_yr_lv
   .[,paste0('log_',vars_to_log) := lapply(.SD,asinh), .SDcols = vars_to_log] %>% 
   .[,`:=`(young_at_start_exports_observed = min_age_exports_observed <= 5,
           young_at_start_dom_rev_observed = min_age_dom_rev_observed <= 5)]
-
 
 write_parquet(firm_lvl_collapsed_variance, file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet'))
 rm(list= setdiff(ls(), base_env)); gc()

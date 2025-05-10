@@ -18,7 +18,7 @@ reg_command = function(dataset, dep_var,ind_var, controls ="", fe,iv ="", cluste
   return(command)
 }
 
-evaluate_variations = function(variations, save_space = T){
+evaluate_variations = function(variations, save_space = T, full_df = T){
   
   model_to_df = function(model){
     if(!is.null(names(model$coefficients))){
@@ -79,6 +79,7 @@ evaluate_variations = function(variations, save_space = T){
   variation_output = lapply(1:nrow(variations), function(i) int_output[[i]][['variation_output']]) %>% rbindlist(fill = T, use.names = T)
   model_output = lapply(1:nrow(variations), function(i) int_output[[i]][['model']])
   failed_output = lapply(1:nrow(variations), function(i) int_output[[i]][['failed_output']]) %>% rbindlist(fill = T, use.names = T)
+  if(!full_df) variation_output = variations 
   return(list(variation_output = variation_output, model_output = model_output, failed_output = failed_output ))
 }
 

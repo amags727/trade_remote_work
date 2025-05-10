@@ -24,7 +24,10 @@ compensation_type_vars = gpaste('comp_', c('french', 'engineer','data', 'rnd','s
 vars_to_log = c('age',  'turnover','dom_turnover', 'total_export_rev_customs', 
                 gpaste(c('comp_data', 'comp_rnd', 'comp_total','comp_abroad'),c('', '_lag1')),
                 gpaste('export_mkt_avg_rev_wgted_comp_', c('now', 'l5', 'ever')))
+
+# for relative values 
 d_vars = c("comp_data", "share_comp_data")
+divisions_list = list(list('nace', c('NACE_BR', 'year')),list('nace_exporter', c('NACE_BR', 'currently_export', 'year'))) 
 # generate firm-yr level datasets describing export activity ----------------------------------------------------------------------
 temp_1 = export_data %>%
   merge(ctry_lvl_age_data, all.x = T) %>% 
@@ -66,19 +69,18 @@ output = bs_br %>%
   variance_metrics(time_id = 'year', group_id = 'NACE_BR', ind_id = 'firmid',
                  int_id = 'dom_turnover',  birth_id = 'birth_year', logged_version = T, prefix = 'nace_',
                  full_dataset = T) %>% 
-
-  # generate comparison vars 
-  .[, (gpaste(d_vars, '_nace_quartile')) := lapply(d_vars, function(x) as.factor(ntile(get(x), 4))), by = .(NACE_BR, year)] %>%
-  .[, (gpaste(d_vars,'_nace_pct_rank')) := lapply(d_vars, function(x) percent_rank(get(x))), by = .(NACE_BR, year)] %>%
-  .[, (gpaste(d_vars,'_nace_sd_from_mean')) := lapply(d_vars, function(x)(get(x)- NA_mean(get(x)))/ NA_sd(get(x))), by = .(NACE_BR, year)] %>%
-  
-  # generate comparison vars (age)
-  .[, (gpaste(d_vars, '_nace_quartile_age')) := lapply(d_vars, function(x) as.factor(ntile(get(x), 4))), by = .(NACE_BR, year,young)] %>%
-  .[, (gpaste(d_vars,'_nace_pct_rank_age')) := lapply(d_vars, function(x) percent_rank(get(x))), by = .(NACE_BR, year,young)] %>%
-  .[, (gpaste(d_vars,'_nace_sd_from_mean_age')) := lapply(d_vars, function(x)(get(x)- NA_mean(get(x)))/ NA_sd(get(x))), by = .(NACE_BR, year,young)] %>%
-
   ##log variables
   .[,paste0('log_',vars_to_log) := lapply(.SD,asinh), .SDcols = vars_to_log]
+
+
+  # generate comparison vars 
+  for (i in length(divisions_list)){inner = divisions_list[[i]][[1]]; outer = ''; group = divisions_list[[i]][[2]]
+  for (j in 1:2){if (j ==2){outer = "_age"; group = c(group,'young')}
+   output =output %>% 
+      .[, (gpaste(d_vars,"_", inner,'_quartile', outer)) := lapply(d_vars, function(x) as.factor(ntile(get(x), 4))), by = group] %>% 
+      .[, (gpaste(d_vars,'_',inner,'_pct_rank',outer)) := lapply(d_vars, function(x) percent_rank(get(x))), by = group] %>%
+      .[, (gpaste(d_vars,'_',inner,'_sd_from_mean',outer)) := lapply(d_vars, function(x)(get(x)- NA_mean(get(x)))/ NA_sd(get(x))), by = group]
+  }}
 
 write_parquet(output,file.path(inputs_dir, '16c_firm_yr_lvl.parquet'))
 
