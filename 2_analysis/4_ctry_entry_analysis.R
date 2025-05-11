@@ -1,6 +1,7 @@
 # import data and run regressions ----------------------------------------------------------------------
 # import the data 
-base_data = import_file(file.path(inputs_dir, '16e_ctry_entrance.parquet'))
+#base_data = import_file(file.path(inputs_dir, '16e_ctry_entrance.parquet'))
+base_data = rbindlist(lapply(list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE),import_file))
 
 #set parameters 
 interactions_1 = c('log_num_other_export_markets', 'not_yet_exported')

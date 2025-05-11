@@ -1,10 +1,17 @@
-#basic setup 
+# setup -------------------------------------------------------------------
 rm(list = ls());
-setwd('../../..')
-if (!file.exists("2) code/00_helper_functions.R")){setwd(dirname(rstudioapi::getActiveDocumentContext()$path)); setwd('../../..')}
+
+## set working directory dynamically 
+{
+  root = case_when(
+    ## AZM running locally and not testing if it will work CASD 
+    grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work",
+    
+    ## update as makes sense for CASD / your own use 
+    T ~ "idk ")
+}
+
 source('2) code/0_set_parameter_values.R')
-
-
 # update firm_yr_lvl ---------------------------------------------------------------
 d_vars = c("comp_data", "share_comp_data")
 divisions_list = list(list('nace', c('NACE_BR', 'year')),list('nace_exporter', c('NACE_BR', 'currently_export', 'year'))) 
@@ -48,40 +55,48 @@ rm(list= setdiff(ls(), base_env)); gc()
 
 # update firm_yr variance dataset -----------------------------------------------------------------
 vars_to_mean = gpaste(c('comp_data', 'share_comp_data'),"_", c('nace', 'nace_exporter'), "_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))
-
+vars_to_log = c('years_dom_rev_observed','years_exports_observed')
 new_meaned = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet')) %>% 
   remove_if_NA(., 'year', 'comp_data') %>% .[!is.na(dom_turnover) | !is.na(total_export_rev_customs)] %>% 
   .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T) %>% 
   .[,c(setNames(lapply(.SD[, ..vars_to_mean], NA_mean), vars_to_mean)), by = firmid]
 
 base = import_file(file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet')) %>% .[,(vars_to_mean) := NULL] %>% 
-      merge(new_meaned, by = 'firmid') 
+  merge(new_meaned, by = 'firmid')  %>% 
+  .[,(paste0('log_',vars_to_log)):= lapply(vars_to_log, function(x) asinh(get(x)))]
+  
 write_parquet(base, file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet'))
 rm(list= setdiff(ls(), base_env)); gc()
 
 
 # update firm_ctry_yr variance dataset ------------------------------------
-vars_to_mean = gpaste(c('comp_data', 'share_comp_data'),"_", c('nace', 'nace_exporter', 'ctry', 'ctry_nace'),
-                      "_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))
+vars_to_mean = c('share_comp_data',gpaste(c('comp_data', 'share_comp_data'),"_", c('nace', 'nace_exporter', 'ctry', 'ctry_nace'),
+                      "_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age"))))
 
 new_meaned = import_file(file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parquet')) %>% 
   remove_if_NA(., 'year', 'export_rev_customs', 'comp_data') %>%
   .[year %in% year_range] %>% distinct(firmid, year, ctry, .keep_all = T) %>% 
-  .[,years_observed := 1] %>% 
   .[,c(setNames(lapply(.SD[, ..vars_to_mean], NA_mean), vars_to_mean)), by = .(firmid, ctry, streak_id)]
 
-base = import_file(file.path(inputs_dir, '16g_firm_ctry_lvl_collapsed_variance.parquet')) %>% .[,(vars_to_mean) := NULL] %>% 
-  merge(new_meaned, by = c('firmid', 'streak_id', 'ctry')) 
+base = import_file(file.path(inputs_dir, '16g_firm_ctry_lvl_collapsed_variance.parquet')) %>% 
+  select(-intersect(names(.),vars_to_mean)) %>% 
+  merge(new_meaned, by = c('firmid', 'streak_id', 'ctry')) %>% 
+  .[,log_years_observed := asinh(years_observed)]
+
 write_parquet(base, gpaste(inputs_dir, '16g_firm_ctry_lvl_collapsed_variance.parquet'))
 
-
+rm(list= setdiff(ls(), base_env)); gc()
 # update entrance dataset -------------------------------------------------
 firm_yr_vars = c('firmid', 'year',gpaste(c('comp_data', 'share_comp_data'),"_nace_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age"))))
 firm_yr = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) %>% remove_if_NA(., firm_yr_vars[3])
 
 for (file in list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE)){
-  import_file(file,char_vars = 'firmid') %>% merge(firm_yr, all.x = T,  by = c('firmid','year')) %>% fwrite(.,file)
+  import_file(file,char_vars = 'firmid') %>% select(-intersect(names(.), firm_yr_vars[-c(1:2)])) %>% 
+    merge(firm_yr, all.x = T,  by = c('firmid','year')) %>% fwrite(.,file)
 }
+rm(list= setdiff(ls(), base_env)); gc()
+
+
 
 
 

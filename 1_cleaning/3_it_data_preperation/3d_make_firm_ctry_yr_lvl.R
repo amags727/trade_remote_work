@@ -1,38 +1,38 @@
-# import_files  -----------------------------------------------------------
-# set parameter values 
-linkedin_ctry_vars = gpaste(c('empl', 'comp'),"_", c('now', 'l5', 'ever'))
-linkedin_vars = c('firmid', 'year', gpaste( 'comp_', c('data', 'engineer', 'french', 'french_data', 'rnd', 'stem', 'weighted_prestige')))
-linkedin_to_log = setdiff(linkedin_vars, c('firmid', 'year', 'weighted_prestige'))
-base_data_to_log =  c('num_markets','distance_to_france','age', 'dom_turnover', 'export_rev_customs',
-                      gpaste(c('comp'), '_', c('ever', 'l5', 'now')),
-                      gpaste(c('mkt_', 'nace_mkt_'), c('num_exporters','size_rev')))
-firm_yr_vars = c('firmid', 'year', 'dom_turnover', 'NACE_BR', "quartile_comp_data", "quartile_share_comp_data", "empl",
-                 'share_comp_data', gpaste(c("comp_data", "share_comp_data"),"_", c('nace', 'nace_exporter'),"_",
-                                           gpaste(c('pct_rank','sd_from_mean'),c('', "_age"))))
-d_vars = c("comp_data", "share_comp_data")
-divisions_list = list(list('nace', c('NACE_BR', 'year')),list('nace_exporter', c('NACE_BR', 'currently_export', 'year'))) 
+# set parameters /import files  -----------------------------------------------------------
+
+# set main parameter values 
+  linkedin_ctry_vars = gpaste(c('empl', 'comp'),"_", c('now', 'l5', 'ever'))
+  linkedin_vars = c('firmid', 'year', gpaste( 'comp_', c('data', 'engineer', 'french', 'french_data', 'rnd', 'stem', 'weighted_prestige')))
+  linkedin_to_log = setdiff(linkedin_vars, c('firmid', 'year', 'weighted_prestige'))
+  base_data_to_log =  c('num_markets','distance_to_france','age', 'dom_turnover', 'export_rev_customs',
+                        gpaste(c('comp'), '_', c('ever', 'l5', 'now')),
+                        gpaste(c('mkt_', 'nace_mkt_'), c('num_exporters','size_rev')))
+  firm_yr_rel_vars =  gpaste(c("comp_data", "share_comp_data"),"_", c('nace', 'nace_exporter'),"_", gpaste(c('pct_rank','sd_from_mean'),c('', "_age")))
+  firm_yr_vars = c('firmid', 'year', 'dom_turnover', 'NACE_BR', "empl", 'share_comp_data', firm_yr_rel_vars)
+
+  
+# set params for relative data intensity
+  d_vars = c("comp_data", "share_comp_data")
+  divisions_list = list(list('ctry', c('ctry', 'year')), list('ctry_nace', c('ctry', 'NACE_BR', 'year')))
 
 
-
-
-firm_yr_lvl = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) %>%
-              .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T)
-
-customs_data = c('firmid', 'ctry','streak_id', 'exim', 'products', 'deflated_value',  'year',
-                 gpaste('export_',c('region', 'language', 'border'))) %>%
-  import_file('1) data/9_customs_cleaned.csv', col_select = ., char_vars = 'firmid') %>%
-  .[year %in% year_range & ctry != 'FR'] %>% distinct(firmid,year,ctry,exim, streak_id, .keep_all = T)
-
-
-linkedin_ctry_lvl = import_file(linkedin_ctry_lvl_path)
-linkedin_firm_lvl = import_file(linkedin_basic_path, col_select = linkedin_vars) %>% 
-  .[,paste0('log_',linkedin_to_log) := lapply(.SD,asinh), .SDcols = linkedin_to_log] 
-
-linkedin_matched_firms = import_file(linkedin_match_path)[['firmid']]
-customs_birth_data = import_file(file.path(inputs_dir, '16b_firm_ctry_lvl_birth_data.parquet'))
-
-
-french_distances = fread('1) data/similarity_matrices/outputs/france_distance_data.csv') 
+# import files 
+  firm_yr_lvl = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) %>%
+                .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T)
+  
+  customs_data = c('firmid', 'ctry','streak_id', 'exim', 'products', 'deflated_value',  'year',
+                   gpaste('export_',c('region', 'language', 'border'))) %>%
+    import_file('1) data/9_customs_cleaned.csv', col_select = ., char_vars = 'firmid') %>%
+    .[year %in% year_range & ctry != 'FR'] %>% distinct(firmid,year,ctry,exim, streak_id, .keep_all = T)
+  
+  
+  linkedin_ctry_lvl = import_file(linkedin_ctry_lvl_path)
+  linkedin_firm_lvl = import_file(linkedin_basic_path, col_select = linkedin_vars) %>% 
+    .[,paste0('log_',linkedin_to_log) := lapply(.SD,asinh), .SDcols = linkedin_to_log] 
+  
+  linkedin_matched_firms = import_file(linkedin_match_path)[['firmid']]
+  customs_birth_data = import_file(file.path(inputs_dir, '16b_firm_ctry_lvl_birth_data.parquet'))
+  french_distances = fread('1) data/similarity_matrices/outputs/france_distance_data.csv') 
 # merge and clean  -----------------------------------------------------------
 output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #only necessary for the dummy versions (hopefully)
   rename_with(~gsub('export_','grav_',. )) %>% rename('export_rev_customs' = 'deflated_value') %>% 

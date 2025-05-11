@@ -1,30 +1,13 @@
-
-# first step: establish the list of firms / countries ---------------------
-linkedin_matched_firms = import_file(linkedin_match_path)[['firmid']]
-
-firm_yr_lvl_firms = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = c('firmid', 'year')) %>%
-  .[year %in% year_range] %>% distinct(firmid) %>% pull(firmid)
-
-customs_birth_data = c('firmid','ctry', 'country_entrance_year', 'exim') %>% 
-  import_file(file.path(inputs_dir, '16b_firm_ctry_lvl_birth_data.parquet'), col_select = .) %>% 
-  .[exim == 2 & country_entrance_year %in% year_range & ctry != 'FR'] 
-
-firms_in_sample =  intersect(linkedin_matched_firms, firm_yr_lvl_firms) %>% intersect(.,unique(customs_birth_data$firmid))
-countries_in_sample = unique(customs_birth_data$ctry)
-
-
-
-
-# import data -------------------------------------------------------------
+# import data / determine sample -------------------------------------------------------------
 ## base data 
-bs_br = c('firmid', 'year', 'dom_turnover', 'empl', 'NACE_BR') %>% 
-  import_file('1) data/3_bs_br_data.csv',char_vars =  c('firmid'), col_select = .) %>% 
-  distinct(firmid,year, .keep_all = T)
+bs_br = import_file('1) data/3_bs_br_data.csv',char_vars =  c('firmid'), 
+        col_select =  c('firmid', 'year', 'dom_turnover', 'empl', 'NACE_BR')) %>% 
+        distinct(firmid,year, .keep_all = T)
 
-firm_yr_lvl =  c('firmid', 'year', 'total_export_rev_customs','num_export_countries',
-                 gpaste(c('comp_data', 'share_comp_data'),"_nace_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))) %>%
-  import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = .) %>%
-  .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T) %>% rename_with(~c(gsub('quartile', 'nace_yr_quartile',.)))
+firm_yr_vars =  c('firmid', 'year', 'total_export_rev_customs','num_export_countries',
+                 gpaste(c('comp_data', 'share_comp_data'),"_nace_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age"))))
+firm_yr_lvl = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) %>%
+  .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T) 
 
 indiv_mkt_rev = import_file('1) data/9_customs_cleaned.csv',
     col_select =  c('firmid', 'ctry', 'year', 'exim', 'deflated_value'), char_vars = 'firmid') %>% 
@@ -32,28 +15,24 @@ indiv_mkt_rev = import_file('1) data/9_customs_cleaned.csv',
 
 
 ### birth data 
-overall_birth_data = c('first_export_year','birth_year', 'firmid') %>% 
-  import_file(file.path(inputs_dir, '16a_firm_lvl_birth_data.parquet'),col_select = .)
+overall_birth_data = import_file(file.path(inputs_dir, '16a_firm_lvl_birth_data.parquet'),col_select = c('first_export_year','birth_year', 'firmid'))
  
+customs_birth_data = import_file(file.path(inputs_dir, '16b_firm_ctry_lvl_birth_data.parquet'),
+                      col_select = c('firmid','ctry', 'country_entrance_year', 'exim')) %>% 
+                      .[exim == 2 & country_entrance_year %in% year_range & ctry != 'FR'] %>% 
+                      select(-exim) %>% unique()
 
-customs_birth_data = c('firmid','ctry', 'country_entrance_year', 'exim') %>% 
-  import_file(file.path(inputs_dir, '16b_firm_ctry_lvl_birth_data.parquet'), col_select = .) %>% 
- 
-  .[exim == 2 & country_entrance_year %in% year_range & ctry != 'FR'] %>% select(-exim) %>% unique()
-
-customs_first_obs = c('year', 'firmid','exim','ctry') %>% 
-  import_file('1) data/9_customs_cleaned.csv', char_vars =  c('firmid'), col_select =.) %>% 
-
-  .[exim == 2] %>% select(-exim) %>% unique() %>% .[, .(first_obs_date =  min(year)), by = .(firmid,ctry)]
+customs_first_obs = import_file('1) data/9_customs_cleaned.csv', char_vars =  c('firmid'),
+                    col_select = c('year', 'firmid','exim','ctry')) %>% 
+                    .[exim == 2] %>% select(-exim) %>% unique() %>%
+                    .[, .(first_obs_date =  min(year)), by = .(firmid,ctry)]
 
 ### linkedin data 
 linkedin_ctry_lvl = import_file(linkedin_ctry_lvl_path) 
-linkedin_firm_lvl = c('share_comp_data','comp_french', 'comp_total', 'comp_data', 'comp_rnd', 
-                      'firmid', 'year',  'comp_weighted_prestige') %>% 
-  import_file(linkedin_basic_path, col_select = .) %>% 
+linkedin_firm_vars =  c('share_comp_data','comp_french', 'comp_total', 'comp_data', 'comp_rnd', 'firmid', 'year',  'comp_weighted_prestige')
+linkedin_firm_lvl = import_file(linkedin_basic_path, col_select = linkedin_firm_vars) %>% 
   .[,first_linkedin_obs_yr := min(year), by = firmid] %>% 
-  unbalanced_lag(., id_var = 'firmid', time_var = 'year', 
-                 value_vars = con_fil(names(.),'data','rnd'),1)
+  unbalanced_lag(., id_var = 'firmid', time_var = 'year', value_vars = con_fil(names(.),'data','rnd'),1)
 
 ## market lvl data 
 base_ctry_lvl =  import_file(file.path(inputs_dir,'16d_firm_ctry_yr_lvl.parquet'))
@@ -75,6 +54,14 @@ nace_ctry_yr_lvl_constants = base_ctry_lvl %>%
 vars_to_log = c('num_other_export_markets','distance_to_france', 'dom_turnover', 
                 gpaste(c('comp'), '_', c('ever', 'l5', 'now','data', 'rnd')),
                 gpaste(c('mkt_', 'nace_mkt_'), c('num_exporters','size_rev')))
+
+
+### DETERMINE SAMPLE 
+linkedin_matched_firms = import_file(linkedin_match_path)[['firmid']]
+firm_yr_lvl_firms = firm_yr_lvl %>% distinct(firmid) %>% pull(firmid)
+firms_in_sample =  intersect(linkedin_matched_firms, firm_yr_lvl_firms) %>% intersect(.,unique(customs_birth_data$firmid))
+countries_in_sample = unique(customs_birth_data$ctry)
+
 
 # construct piecewise output---------------------------------------------------------
 dir.create('1) data/temp_data')

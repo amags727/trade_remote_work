@@ -9,11 +9,12 @@ vars_to_mean = c(relative_vars, 'dom_turnover', 'empl', 'comp_data', 'comp_rnd',
                  "nace_churn_rate", "nace_de_trended_log_variance_ind_lvl", "nace_de_trended_log_variance_group_lvl")
 
 vars_to_min = gpaste(c('first_year', 'age'), '_', c('exports_observed', 'dom_rev_observed'))
-vars_to_mode = c('NACE_BR','empl_bucket', "quartile_comp_data", "quartile_share_comp_data")
+vars_to_mode = c('NACE_BR','empl_bucket')
 vars_to_any= c('young', 'adolescent')
 vars_to_sum = c('years_exports_observed', 'years_dom_rev_observed')
 vars_to_variance = c("log_dom_turnover", "log_total_export_rev_customs")
-vars_to_log = con_fil(c(vars_to_mean, 'min_age_exports_observed', 'min_age_dom_rev_observed'), 'comp_weighted_prestige', 'nace', inc = F)
+vars_to_log = c(con_fil(c(vars_to_mean, 'min_age_exports_observed', 'min_age_dom_rev_observed'), 'comp_weighted_prestige', 'nace', inc = F),
+                'years_dom_rev_observed','years_exports_observed')
 
 
 firm_lvl_collapsed_variance =  import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet')) %>% 
@@ -59,17 +60,20 @@ firm_ctry_yr_lvl = import_file(file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parqu
   .[year %in% year_range] %>% distinct(firmid, year, ctry, .keep_all = T) %>% 
   .[,years_observed := 1]
 
-
+relative_vars = gpaste(c('comp_data', 'share_comp_data'), "_",
+                       c('nace', 'nace_exporter', 'ctry', 'ctry_nace'), "_", 
+                       gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))
 vars_to_first = c('streak_start', paste0('first_time_',c('exporting','in_ctry')),'distance_to_france')
 vars_to_min = c('age', 'streak_age', 'year')
 vars_to_mean = c('num_markets', 'products',  gpaste("comp_", c('ever', 'l5', 'now', 'data', 'rnd', 'weighted_prestige')),
-                 'dom_turnover', 'export_rev_customs', 
+                 'dom_turnover', 'export_rev_customs', 'share_comp_data', relative_vars, 
                  con_fil(con_fil(names(firm_ctry_yr_lvl), 'mkt'), 'log_nace', 'log_mkt','mkt_log_variance', inc = F))
-vars_to_log = c('distance_to_france','min_age', 'min_streak_age',
-                con_fil(vars_to_mean, 'weighted_prestige', 'rate', 'variance', 'share_active', inc = F))
-vars_to_mode = c('NACE_BR','nace_yr_quartile_comp_data', 'nace_yr_quartile_share_comp_data')
+vars_to_log = c('distance_to_france','min_age', 'min_streak_age','years_observed',
+                con_fil(vars_to_mean, 'weighted_prestige', 'rate', 'variance', 'share_active','share_comp_data', inc = F))
+vars_to_mode = c('NACE_BR')
 vars_to_variance = 'log_export_rev_customs'
 vars_to_sum = c('years_observed')
+
 firm_ctry_lvl_collapsed_variance = firm_ctry_yr_lvl %>% 
   # generate log versions of interest vars 
   .[,(vars_to_variance) := lapply(.SD, asinh), .SDcols = gsub('log_', '', vars_to_variance) ] %>% 

@@ -39,22 +39,26 @@ evaluate_variations = function(variations, save_space = T, full_df = T){
     }
     return(output)
   }
-  
-  ### TRY TO RUN EACH OF THE MODELS 
-  int_output = lapply(1:nrow(variations), function(i){
-    command = variations$command[i]
+  unique_commmands =  variations %>% distinct(command) %>% mutate(reg_num = 1:nrow(.))
+ 
+   ### TRY TO RUN EACH OF THE MODELS 
+  int_output = lapply(1:nrow(unique_commmands), function(i){
+    command = unique_commmands$command[i]
     model_attempt = tryCatch({eval(parse(text = command))},  error = function(e){e$message})
     
     ### IF THE MODEL FAILED TO RUN 
     if(typeof(model_attempt) == 'character'){
-      print(paste0('failed row ',i,": ", command)); short_error = ""
-      if(grepl('of the formula but', gsub('\\n',' ',model_attempt))) short_error = 'missing variable'
-      if (grepl('The dependent variable', model_attempt) & grepl("is a constant", model_attempt)) short_error ="constant dep_var:"
-      if(grepl('are collinear with the fixed', model_attempt)) short_error = "ind vars collinear w/ fe"
+      print(paste0('failed row ',i,": ", command));
+      short_error = case_when(
+        grepl('of the formula but', gsub('\\n',' ',model_attempt)) ~ 'missing variable',
+        grepl('The dependent variable', model_attempt) & grepl("is a constant", model_attempt) ~ "constant dep. var",
+        grepl('are collinear with the fixed', model_attempt) ~ "ind vars collinear w/ fe",
+        grepl('All observations contain NA values', model_attempt) ~ 'all observations contain NA',
+        grepl('No \\(non-missing\\) observations', model_attempt) ~ 'No (non-missing) observations',
+        T ~  "")
       failed_output = data.table(counter = i, command = command, reason = model_attempt, short_error = short_error)
       variation_output = data.table()
       model = list()
-
     }
     ##### IF THE MODEL SUCCESSFULLY RAN 
     if(typeof(model_attempt) != 'character'){
@@ -75,11 +79,18 @@ evaluate_variations = function(variations, save_space = T, full_df = T){
     return(list(failed_output = failed_output, variation_output = variation_output, model = model))
   })
   
+  variations_new = merge(variations %>% mutate(counter = 1:nrow(.)),unique_commmands) %>% arrange(counter)
   ### PUT TOGETHER EACH OF THE INDIVIDUAL OUTPUT TYPES 
-  variation_output = lapply(1:nrow(variations), function(i) int_output[[i]][['variation_output']]) %>% rbindlist(fill = T, use.names = T)
-  model_output = lapply(1:nrow(variations), function(i) int_output[[i]][['model']])
-  failed_output = lapply(1:nrow(variations), function(i) int_output[[i]][['failed_output']]) %>% rbindlist(fill = T, use.names = T)
+  variation_output = lapply(1:nrow(variations), function(i)int_output[[variations_new$reg_num[i]]][['variation_output']]) %>% rbindlist(fill = T, use.names = T)
+  model_output = lapply(1:nrow(variations), function(i)int_output[[variations_new$reg_num[i]]][['model']])
+  failed_output = lapply(1:nrow(variations), function(i)int_output[[variations_new$reg_num[i]]][['failed_output']]) %>% rbindlist(fill = T, use.names = T)
   if(!full_df) variation_output = variations 
+  
+  ## have it output the failed variations 
+  if(nrow(failed_output!=0)){
+    if(nrow(failed_output[short_error != "error converting to table"]) !=0){
+      print(failed_output[short_error != "error converting to table"])
+    }else{print('ran without issues')}}else{print('ran without issues')}
   return(list(variation_output = variation_output, model_output = model_output, failed_output = failed_output ))
 }
 

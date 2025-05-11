@@ -74,7 +74,7 @@ output = bs_br %>%
 
 
   # generate comparison vars 
-  for (i in length(divisions_list)){inner = divisions_list[[i]][[1]]; outer = ''; group = divisions_list[[i]][[2]]
+  for (i in 1:length(divisions_list)){inner = divisions_list[[i]][[1]]; outer = ''; group = divisions_list[[i]][[2]]
   for (j in 1:2){if (j ==2){outer = "_age"; group = c(group,'young')}
    output =output %>% 
       .[, (gpaste(d_vars,"_", inner,'_quartile', outer)) := lapply(d_vars, function(x) as.factor(ntile(get(x), 4))), by = group] %>% 
