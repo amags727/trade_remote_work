@@ -55,7 +55,7 @@ variations_export_entrance = data.frame(ind_var = ind_vars) %>% mutate(block = '
 
 ## combine and run 
 variation_output = rbind(variations_dom_rev,variations_total_export_rev,variations_export_entrance)
-if(!running_regressions){write_rds(evaluate_variations(variation_output, full_df = F), paste0(raw_output_dir,'block_2a_firm_yr.rds'))}
+if(running_regressions){write_rds(evaluate_variations(variation_output, full_df = F), paste0(raw_output_dir,'block_2a_firm_yr.rds'))}
 
 ## cleanup 
 rm(list= setdiff(ls(), base_env)); gc()
@@ -92,7 +92,7 @@ variations_ctry_exit = data.frame(ind_var = ind_vars, block =  rep(gpaste('2b.ii
 ))
 
 variation_output = rbind(variations_ctry_rev,variations_ctry_exit)
-if(!running_regressions){write_rds(evaluate_variations(variation_output, full_df = F), paste0(raw_output_dir,'block_2b_firm_ctry_yr.rds'))}
+if(running_regressions){write_rds(evaluate_variations(variation_output, full_df = F), paste0(raw_output_dir,'block_2b_firm_ctry_yr.rds'))}
 
 ## cleanup 
 rm(list= setdiff(ls(), base_env)); gc()
@@ -131,7 +131,7 @@ variations_export_variance = data.frame(ind_var = export_ind_vars, block =  rep(
 
 
 variation_output = rbind(variations_dom_variance,variations_export_variance)
-if(!running_regressions){write_rds(evaluate_variations(variation_output, full_df = F), paste0(raw_output_dir,'block_2c_firm_variance.rds'))}
+if(running_regressions){write_rds(evaluate_variations(variation_output, full_df = F), paste0(raw_output_dir,'block_2c_firm_variance.rds'))}
 ## cleanup 
 rm(list= setdiff(ls(), base_env)); gc()
 
@@ -153,7 +153,7 @@ variations = data.frame(ind_var = ind_vars, block =  rep(gpaste('2d.i.',1:4,'_ct
   cluster = 'firmid'
 ))
 
-if(!running_regressions){write_rds(evaluate_variations(variations, full_df = F), paste0(raw_output_dir,'block_2d_firm_ctry_variance.rds'))}
+if(running_regressions){write_rds(evaluate_variations(variations, full_df = F), paste0(raw_output_dir,'block_2d_firm_ctry_variance.rds'))}
 ## cleanup 
 rm(list= setdiff(ls(), base_env)); gc()
 
@@ -177,7 +177,7 @@ variations= data.frame(ind_var = ind_vars) %>% mutate(block = '2e_ctry_entrance'
   time_var = 'age'))
 
 
-if(!running_regressions){write_rds(evaluate_variations(variations, full_df = F), paste0(raw_output_dir,'block_2e_country_entry.rds'))}
+if(running_regressions){write_rds(evaluate_variations(variations, full_df = F), paste0(raw_output_dir,'block_2e_country_entry.rds'))}
 
 ## cleanup 
 rm(list= setdiff(ls(), base_env)); gc()

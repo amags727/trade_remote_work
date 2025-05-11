@@ -10,7 +10,6 @@ rm(list = ls());
     ## update as makes sense for CASD / your own use 
     T ~ "idk ")
 }
-
 source('2) code/0_set_parameter_values.R')
 # update firm_yr_lvl ---------------------------------------------------------------
 d_vars = c("comp_data", "share_comp_data")
