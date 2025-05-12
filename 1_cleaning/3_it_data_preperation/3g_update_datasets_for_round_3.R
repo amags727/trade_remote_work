@@ -3,12 +3,14 @@ rm(list = ls());
 
 ## set working directory dynamically 
 {
+  library(dplyr)
   root = case_when(
     ## AZM running locally and not testing if it will work CASD 
     grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work",
     
     ## update as makes sense for CASD / your own use 
     T ~ "idk ")
+  setwd(root)
 }
 source('2) code/0_set_parameter_values.R')
 # update firm_yr_lvl ---------------------------------------------------------------
@@ -88,10 +90,17 @@ rm(list= setdiff(ls(), base_env)); gc()
 # update entrance dataset -------------------------------------------------
 firm_yr_vars = c('firmid', 'year',gpaste(c('comp_data', 'share_comp_data'),"_nace_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age"))))
 firm_yr = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) %>% remove_if_NA(., firm_yr_vars[3])
+overall_mkt_popularity = import_file('1) data/9_customs_cleaned.csv',
+   col_select =  c('firmid', 'ctry', 'year', 'exim', 'deflated_value'), char_vars = 'firmid') %>% 
+  .[exim == 2 & ctry != 'FR' & year %in% year_range] %>% 
+  .[,.(count =  .N), by = ctry] %>% arrange(-count) %>% 
+  .[,mkt_all_time_popularity_rank := 1:nrow(.)] %>% select(-count)
 
 for (file in list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE)){
-  import_file(file,char_vars = 'firmid') %>% select(-intersect(names(.), firm_yr_vars[-c(1:2)])) %>% 
-    merge(firm_yr, all.x = T,  by = c('firmid','year')) %>% fwrite(.,file)
+  import_file(file,char_vars = 'firmid') %>% select(-intersect(names(.), c('mkt_all_time_popularity_rank',firm_yr_vars[-c(1:2)]))) %>% 
+    merge(firm_yr, all.x = T,  by = c('firmid','year')) %>%
+    merge(overall_mkt_popularity, all.x = T, by = 'ctry') %>% 
+    fwrite(.,file)
 }
 rm(list= setdiff(ls(), base_env)); gc()
 

@@ -13,6 +13,8 @@ indiv_mkt_rev = import_file('1) data/9_customs_cleaned.csv',
     col_select =  c('firmid', 'ctry', 'year', 'exim', 'deflated_value'), char_vars = 'firmid') %>% 
   .[exim == 2 & ctry != 'FR' & year %in% year_range] %>% select(-exim)
 
+overall_mkt_popularity = indiv_mkt_rev[,.(count =  .N), by = ctry] %>% arrange(-count) %>% 
+  .[,mkt_all_time_popularity_rank := 1:nrow(.)] %>% select(-count)
 
 ### birth data 
 overall_birth_data = import_file(file.path(inputs_dir, '16a_firm_lvl_birth_data.parquet'),col_select = c('first_export_year','birth_year', 'firmid'))
@@ -115,7 +117,11 @@ lapply(1:length(chunk_list), function(chunk_num){
     merge(nace_ctry_yr_lvl_constants, all.x = T, by = c('ctry', 'NACE_BR', 'year')) %>% 
     
     ## add in log data 
-    .[,paste0('log_',vars_to_log) := lapply(.SD,asinh), .SDcols =vars_to_log] 
+    .[,paste0('log_',vars_to_log) := lapply(.SD,asinh), .SDcols =vars_to_log] %>% 
+  
+    ## add in market popoularity 
+    merge(overall_mkt_popularity, by = 'ctry', all.x = T)
+  
   
   
   # output data -------------------------------------------------------------

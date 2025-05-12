@@ -1,4 +1,20 @@
+# setup -------------------------------------------------------------------
+rm(list = ls());
 
+## set working directory dynamically 
+{
+  library(dplyr)
+  root = case_when(
+    ## AZM running locally and not testing if it will work CASD 
+    grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work",
+    
+    ## update as makes sense for CASD / your own use 
+    T ~ "idk ")
+  setwd(root)
+}
+
+
+source('2) code/0_set_parameter_values.R')
 # 1) make balance test  ---------------------------------------------------
 base_vars =  c('turnover', 'capital', 'intangible_fixed_assets', 'empl', 'age', 'comp_weighted_prestige')
 linkedin_vars =  gpaste(c("", 'share_'), 'comp_', c('data', 'stem', 'rnd', 'engineer'))
