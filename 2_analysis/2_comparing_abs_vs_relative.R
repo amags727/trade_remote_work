@@ -161,7 +161,7 @@ rm(list= setdiff(ls(), base_env)); gc()
 
 
 # 2e entrance analysis  ---------------------------------------------------
-min_pop_rank = 20
+min_pop_rank = 20;
 base = rbindlist(lapply(list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE),
                         function(file) import_file(file)[mkt_all_time_popularity_rank <= min_pop_rank]))
 controls =  " + log_dom_turnover + log_comp_rnd + comp_weighted_prestige"
