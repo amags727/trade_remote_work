@@ -42,42 +42,68 @@ for (i in 1:nrow(variations)){
       cluster = "NACE_BR"))
   
   if (running_regressions) write_rds(evaluate_variations(block),file_path)
-  assign(paste0('block_5',letters[i]),block)
-  assign(paste0('block_5',letters[i],'_output'),read_rds(file_path))
   rm(block, interaction, file_path)
 }
                      
 
-# Setup output --------------------------------------------------
-interactions_1_table = gpaste(c('','\\multicolumn{1}{r}{x '),'NACE ', c('churn rate', 'avg. firm var', 'var'),
+# generate output  --------------------------------------------------
+interactions_1 = gpaste(c('','\\multicolumn{1}{r}{x '),'NACE ', c('churn rate', 'avg. firm var', 'var'),
                               order = 3:1) %>% index_paste(., grepl('multi',.), '}')
-interactions_2_table = gpaste('\\multicolumn{1}{r}{', c('currently in mkt','\\hspace{5 pt}with recent mkt exp.', 'with any mkt exp.'), "}",
+interactions_2 = gpaste('\\multicolumn{1}{r}{', c('currently in mkt','\\hspace{5 pt}with recent mkt exp.', 'with any mkt exp.'), "}",
                               c('', 'x\n\\multicolumn{1}{r}{log comp data}')) %>% gsub('}x', " x}",.) 
 
-dom_controls_table = c(gpaste('log ', c('comp data', 'dom.\nrevenue', 'comp r\\&d', 'age')),  'avg worker\nprestige') %>% .[c(1:3,5,4)]
-export_controls_table = append(dom_controls_table, 'log export\nrevenue', after = 2)  
- 
+dom_controls = c(gpaste('log ', c('comp data', 'dom.\nrevenue', 'comp r\\&d', 'age')),  'avg worker\nprestige') %>% .[c(1:3,5,4)]
+export_controls = append(dom_controls, 'log export\nrevenue', after = 1)  
+table_notes = paste0('Robust standard errors clustered at the firm level. All regressions include industry,',
+                     'initial-year, and observation period length fixed effects')
 
 
-
-# output 5a ---------------------------------------------------------------
-for (name in names(block_5a_output)) assign(name, block_5a_output[[name]])
-if(dummy_version) model_output = rep(model_output[1:4],3)
-
+## output 5a
+output = import_file(gpaste(raw_output_dir,'5a_output_raw.rds')); for (name in names(output)) assign(name, output[[name]])
 label = '5a_dom_rev_variance_x_nace_char'
-### HAS NOT BEEN CHECKED 
 format_table(model_output,
              label = label,
-             coef_names =  c(dom_controls_table, interactions_1_table),
-             headers = age_header,
+             coef_names =  c(dom_controls, interactions_1),
+             headers = age_header, 
              divisions_before = c(5,9),
-             coef_order = c(1,6:11,2:5),
+             coef_order = c(1,7,9,11,6,8,10,2:5),
+             notes = table_notes,
+             note_width = 1.2,
+             rescale_factor = 1,
+             output_path = paste0(finished_output_dir, label,'.tex')
+)
+
+## output 5b 
+output = import_file(gpaste(raw_output_dir,'5b_output_raw.rds')); for (name in names(output)) assign(name, output[[name]])
+label = '5b_total_export_rev_variance_x_nace_char'
+format_table(model_output,
+             label = label,
+             coef_names =  c(export_controls, interactions_1),
+             headers = age_header, 
+             divisions_before = c(5,9),
+             coef_order = c(1,8,10,12,7,9,11,2:6),
+             notes = table_notes,
+             note_width = 1.2,
+             rescale_factor = 1,
+             output_path = paste0(finished_output_dir, label,'.tex')
+)
+
+
+## output 5c
+output = import_file(gpaste(raw_output_dir,'5c_output_raw.rds')); for (name in names(output)) assign(name, output[[name]])
+label = '5c_total_export_rev_variance_x_worker_exp'
+format_table(model_output,
+             label = label,
+             coef_names =  c(export_controls, interactions_2),
+             headers = age_header, 
+             divisions_before = c(5,9),
+             coef_order = c(1,7:12,2:6),
              custom_row_placement = 10,
              custom_rows = list(c('Log comp. for employees:', rep('', 12))),
              notes = table_notes,
              note_width = 1.2,
              rescale_factor = 1,
-             output_path = paste0("3) output/", label,'.tex')
+             output_path = paste0(finished_output_dir, label,'.tex')
 )
 
 

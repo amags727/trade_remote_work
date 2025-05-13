@@ -97,12 +97,12 @@ block_2c = expand(current_filter, c('',gpaste('*',overseas_employment_vars)),nam
               cluster = 'firmid'))
 
 if (running_regressions){write_rds(evaluate_variations(block_2c),"3) output/0_raw_output/2c_output_raw.rds")}else{
-block_2c_output = read_rds("3) output/0_raw_output/2c_output_raw.rds")  
+block_2c_output = read_rds(paste0(raw_output_dir,"2c_output_raw.rds"))
 for (name in names(block_2c_output)) assign(name, block_2c_output[[name]])
 label = '2c_export_rev_x_foreign_employment'
 table = format_table(model_output, label = label, header = age_header,
                      divisions_before = c(5,9), rescale_factor = 1,
-                     output_path = paste0("3) output/", label,'.tex'),
+                     output_path = paste0(finished_output_dir, label,'.tex'),
                      coef_order = c(1, 6:11, 2:5),
                      spacer_size = .25,
                      custom_row_placement = 10,
