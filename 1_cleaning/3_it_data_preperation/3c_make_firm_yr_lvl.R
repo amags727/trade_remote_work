@@ -21,7 +21,7 @@ temp_1_export_vars = c('total_export_rev_customs', 'num_product_x_ctry_markets',
 temp_2_export_vars =  gpaste(c('empl', 'comp'),"_", c('now', 'l5', 'ever'))
 export_vars_to_zero = c('total_export_rev_customs', 'num_product_x_ctry_markets', "num_export_countries")
 compensation_type_vars = gpaste('comp_', c('french', 'engineer','data', 'rnd','stem', 'french_data'))
-vars_to_log = c('age',  'turnover','dom_turnover', 'total_export_rev_customs', 
+vars_to_log = c('age',  'turnover','dom_turnover', 'total_export_rev_customs', 'empl', 'capital',
                 gpaste(c('comp_data', 'comp_rnd', 'comp_total','comp_abroad'),c('', '_lag1')),
                 gpaste('export_mkt_avg_rev_wgted_comp_', c('now', 'l5', 'ever')))
 

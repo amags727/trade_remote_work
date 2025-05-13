@@ -3,8 +3,7 @@ rm(list = ls());
 
 ## set working directory dynamically 
 {
-library(dplyr)
-root = case_when(
+root = dplyr::case_when(
   ## AZM running locally and not testing if it will work CASD 
   grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work",
   
@@ -164,7 +163,7 @@ rm(list= setdiff(ls(), base_env)); gc()
 # 2e entrance analysis  ---------------------------------------------------
 min_pop_rank = 20
 base = rbindlist(lapply(list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE),
-                        function(file) import_file(file)[mkt_all_time_popularity_rank <= 20]))
+                        function(file) import_file(file)[mkt_all_time_popularity_rank <= min_pop_rank]))
 controls =  " + log_dom_turnover + log_comp_rnd + comp_weighted_prestige"
 ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean',
              'share_comp_data', 'share_comp_data_nace_pct_rank', 'share_comp_data_nace_sd_from_mean')

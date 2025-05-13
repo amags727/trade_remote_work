@@ -5,6 +5,7 @@ bs_br = import_file('1) data/3_bs_br_data.csv',char_vars =  c('firmid'),
         distinct(firmid,year, .keep_all = T)
 
 firm_yr_vars =  c('firmid', 'year', 'total_export_rev_customs','num_export_countries',
+                  gpaste('log_', c('empl', 'capital')),
                  gpaste(c('comp_data', 'share_comp_data'),"_nace_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age"))))
 firm_yr_lvl = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) %>%
   .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T) 
@@ -53,7 +54,7 @@ nace_ctry_yr_lvl_constants = base_ctry_lvl %>%
   unique()
 
 ## other params 
-vars_to_log = c('num_other_export_markets','distance_to_france', 'dom_turnover', 
+vars_to_log = c('num_other_export_markets','distance_to_france', 'dom_turnover', 'other_export_market_rev',
                 gpaste(c('comp'), '_', c('ever', 'l5', 'now','data', 'rnd')),
                 gpaste(c('mkt_', 'nace_mkt_'), c('num_exporters','size_rev')))
 

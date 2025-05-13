@@ -19,7 +19,7 @@ reg_command = function(dataset, dep_var,ind_var, controls ="", fe,iv ="", cluste
 }
 
 evaluate_variations = function(variations, save_space = T, full_df = T){
-  
+  variations = variations %>% ungroup()
   model_to_df = function(model){
     if(!is.null(names(model$coefficients))){
       output =  data.frame(regressor = names(model$coefficients)) %>% mutate(
@@ -52,7 +52,7 @@ evaluate_variations = function(variations, save_space = T, full_df = T){
       short_error = case_when(
         grepl('of the formula but', gsub('\\n',' ',model_attempt)) ~ 'missing variable',
         grepl('The dependent variable', model_attempt) & grepl("is a constant", model_attempt) ~ "constant dep. var",
-        grepl('are collinear with the fixed', model_attempt) ~ "ind vars collinear w/ fe",
+        grepl('are collinear with the fixed|collinear with the\\nfixed effects', model_attempt) ~ "ind vars collinear w/ fe",
         grepl('All observations contain NA values', model_attempt) ~ 'all observations contain NA',
         grepl('No \\(non-missing\\) observations', model_attempt) ~ 'No (non-missing) observations',
         T ~  "")

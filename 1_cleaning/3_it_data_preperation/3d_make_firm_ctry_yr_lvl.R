@@ -4,7 +4,7 @@
   linkedin_ctry_vars = gpaste(c('empl', 'comp'),"_", c('now', 'l5', 'ever'))
   linkedin_vars = c('firmid', 'year', gpaste( 'comp_', c('data', 'engineer', 'french', 'french_data', 'rnd', 'stem', 'weighted_prestige')))
   linkedin_to_log = setdiff(linkedin_vars, c('firmid', 'year', 'weighted_prestige'))
-  base_data_to_log =  c('num_markets','distance_to_france','age', 'dom_turnover', 'export_rev_customs',
+  base_data_to_log =  c('num_markets','distance_to_france','age', 'dom_turnover', 'export_rev_customs','other_market_rev',
                         gpaste(c('comp'), '_', c('ever', 'l5', 'now')),
                         gpaste(c('mkt_', 'nace_mkt_'), c('num_exporters','size_rev')))
   firm_yr_rel_vars =  gpaste(c("comp_data", "share_comp_data"),"_", c('nace', 'nace_exporter'),"_", gpaste(c('pct_rank','sd_from_mean'),c('', "_age")))
@@ -90,6 +90,10 @@ output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #on
     .[, `:=`(nace_mkt_share_active_exporters = nace_mkt_num_exporters / nace_num_exporters,
             mkt_share_active_exporters =  mkt_num_exporters/ num_exporters,
             nace_num_exporters = NULL, num_exporters = NULL)] %>% 
+    
+    # add variable for revenue in other markets 
+    .[, other_market_rev := NA_sum(export_rev_customs) - export_rev_customs, by = .(firmid, year)] %>% 
+  
   
   # log necessary variables 
   .[,paste0('log_',base_data_to_log) := lapply(.SD,asinh), .SDcols =base_data_to_log]

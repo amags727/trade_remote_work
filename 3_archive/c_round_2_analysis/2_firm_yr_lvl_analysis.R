@@ -1,3 +1,12 @@
+# set proper directory -------------------------------------------------------------------
+analysis_round = 2
+output_base = paste0('3) output/',letters[analysis_round],"_round_",analysis_round,"_analysis/")
+suppressWarnings(dir.create(output_base))
+raw_output_dir = paste0(output_base,letters[analysis_round],"1_raw_output/")
+finished_output_dir = paste0(output_base,letters[analysis_round],"2_finished_tables/")
+lapply(c(raw_output_dir, finished_output_dir),function(x) suppressWarnings(dir.create(x)))
+rm(output_base)
+
 # Setup -------------------------------------------------------------------
 ## set parameter values 
 uncertainty_values = c("nace_churn_rate", "nace_de_trended_log_variance_ind_lvl", "nace_de_trended_log_variance_group_lvl")
