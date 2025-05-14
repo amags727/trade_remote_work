@@ -4,9 +4,10 @@
 ## identify key variables 
 relative_vars = gpaste(c('comp_data', 'share_comp_data'),"_", c('nace', 'nace_exporter'), "_", gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))
 vars_to_mean = c(relative_vars, 'dom_turnover', 'empl', 'comp_data', 'comp_rnd', 'share_comp_data', "comp_weighted_prestige", 
-                 'total_export_rev_customs',  "num_export_countries",  "avg_products_per_ctry", 
+                 'total_export_rev_customs',  "num_export_countries",  "avg_products_per_ctry", 'capital',
                  "export_mkt_avg_rev_wgted_comp_now", "export_mkt_avg_rev_wgted_comp_l5", "export_mkt_avg_rev_wgted_comp_ever",
-                 "nace_churn_rate", "nace_de_trended_log_variance_ind_lvl", "nace_de_trended_log_variance_group_lvl")
+                 gpaste('nace_', c('entrance', 'exit', 'churn'), '_rate'),
+                 "nace_de_trended_log_variance_ind_lvl", "nace_de_trended_log_variance_group_lvl")
 
 vars_to_min = gpaste(c('first_year', 'age'), '_', c('exports_observed', 'dom_rev_observed'))
 vars_to_mode = c('NACE_BR','empl_bucket')
@@ -63,9 +64,11 @@ firm_ctry_yr_lvl = import_file(file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parqu
 relative_vars = gpaste(c('comp_data', 'share_comp_data'), "_",
                        c('nace', 'nace_exporter', 'ctry', 'ctry_nace'), "_", 
                        gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))
-vars_to_first = c('streak_start', paste0('first_time_',c('exporting','in_ctry')),'distance_to_france')
+vars_to_first = c('streak_start', paste0('first_time_',c('exporting','in_ctry')),'distance_to_france',
+                  gpaste('grav_', c('border', 'region', 'language')))
 vars_to_min = c('age', 'streak_age', 'year')
-vars_to_mean = c('num_markets', 'products',  gpaste("comp_", c('ever', 'l5', 'now', 'data', 'rnd', 'weighted_prestige')),
+vars_to_mean = c('num_markets', 'products', 'other_market_rev',
+                 gpaste("comp_", c('ever', 'l5', 'now', 'data', 'rnd', 'weighted_prestige')),
                  'dom_turnover', 'export_rev_customs', 'share_comp_data', relative_vars, 
                  con_fil(con_fil(names(firm_ctry_yr_lvl), 'mkt'), 'log_nace', 'log_mkt','mkt_log_variance', inc = F))
 vars_to_log = c('distance_to_france','min_age', 'min_streak_age','years_observed',

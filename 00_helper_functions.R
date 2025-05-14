@@ -10,38 +10,89 @@ reg_command = function(dataset, dep_var,ind_var, controls ="", fe,iv ="", cluste
   
   if(family == 'cox'){
     command = paste0("coxph(formula = Surv(", time_var, ",", time_var, "+ 1,", dep_var, ") ~ ", ind_var, controls, '+ strata(',fe ,") ,data = ", dataset,
-           ", cluster = ", cluster, ", control = coxph.control(iter.max = 1000))")
+                     ", cluster = ", cluster, ", control = coxph.control(iter.max = 1000))")
   }else if(family != "feols"){
     command = gsub('feols\\(', 'feglm(', command)
     command =  paste0(substr(command, 1, nchar(command) - 1), ", family = '", family, "')")
   }
   return(command)
 }
-
+extract_model_vars <- function(cmd_list){
+  extract_from_single_command = function(cmd){
+   # Turn the string into a call object
+  expr <- parse(text = cmd)[[1]]
+  args <- as.list(expr)[-1]  # drop the function name
+  
+  backup = which(sapply(args, function(x) inherits(x, "formula")))[1]
+  # 1 Locate the model formula
+  if ("formula" %in% names(args)) {
+    fml <- args[["formula"]]
+  } else if(!is.na(backup)){
+    fml = args[[backup]]
+  }else{
+    fml = args[[2]]
+  }
+  
+  # 2 Extract all vars from that formula
+  vars <- all.vars(fml)
+  
+  # 3 If there's a cluster=… argument, pull its vars too
+  if ("cluster" %in% names(args)) {
+    cl <- args[["cluster"]]
+    if (inherits(cl, "formula")) {
+      cl_vars <- all.vars(cl)
+    } else {
+      # e.g. cluster = firmid  (a bare symbol)
+      cl_vars <- as.character(cl)
+    }
+    vars <- c(vars, cl_vars)
+  }
+  
+  # 4 Inline data‐filter variables
+  if ("data" %in% names(args)) {
+    d <- args[["data"]]
+    if (is.call(d) && identical(d[[1]], as.name("["))) {
+      # d is something like `[`(base_data, year <= first_export_year)
+      ds_name <- as.character(d[[2]])
+      # take all names in that call, drop the dataset name itself
+      subset_vars <- setdiff(all.vars(d), ds_name)
+      vars <- c(vars, subset_vars)
+    }
+  }
+  
+  return(vars)
+  }
+  return(unique(unlist(lapply(cmd_list, extract_from_single_command))) %>% setdiff(., c('~')))
+}
 evaluate_variations = function(variations, save_space = T, full_df = T){
-  variations = variations %>% ungroup()
-  model_to_df = function(model){
-    if(!is.null(names(model$coefficients))){
+  model_to_df = function(model, is_cox){
+    if(!is_cox){
       output =  data.frame(regressor = names(model$coefficients)) %>% mutate(
         year =  as.numeric(str_extract(regressor, '\\d{4}')),
         coef = as.numeric(model$coefficients),
         se = as.numeric(summary(model)$se), 
         p_val = round(summary(model)$coeftable[, "Pr(>|t|)"],3),
         lb = coef - 1.96*se, ub = coef + 1.96*se)
-    }else{ ## primarily to handle the output from cox regressions which is formatted differently 
-      input = as.data.frame(model$coefficients)
-      output = data.frame(regressor = row.names(input)) %>% mutate(
-        year =  as.numeric(str_extract(regressor, '\\d{4}')),
-        coef =  as.numeric(input[['coef']]),
-        se = input[['robust se']],
-        p_val = round(input[['Pr(>|z|)']], 3),
-        lb = coef - 1.96*se, ub = coef + 1.96*se)
+    }else{
+      output = data.frame()
     }
     return(output)
   }
+  space_saver = function(model, save_space){
+    if(save_space){
+      model = summary(model)
+      objects_to_delete = sapply(model, object.size) %>% as.data.frame() %>% rownames_to_column() %>%
+        rename_with(~c('object','size')) %>% filter(size > 10000)  %>% pull(object)
+      objects_to_delete = c(objects_to_delete, 'call_env', 'summary_flags')
+      for(object in objects_to_delete) model[[object]] = NULL}
+    return(model)
+  }
+  ## setup 
+  variations = variations %>% ungroup()
   unique_commmands =  variations %>% distinct(command) %>% mutate(reg_num = 1:nrow(.))
- 
-   ### TRY TO RUN EACH OF THE MODELS 
+  variations = merge(variations %>% mutate(counter = 1:nrow(.)),unique_commmands) %>% arrange(counter)
+  
+  ### TRY TO RUN EACH OF THE MODELS 
   int_output = lapply(1:nrow(unique_commmands), function(i){
     command = unique_commmands$command[i]
     model_attempt = tryCatch({eval(parse(text = command))},  error = function(e){e$message})
@@ -57,40 +108,38 @@ evaluate_variations = function(variations, save_space = T, full_df = T){
         grepl('No \\(non-missing\\) observations', model_attempt) ~ 'No (non-missing) observations',
         T ~  "")
       failed_output = data.table(counter = i, command = command, reason = model_attempt, short_error = short_error)
-      variation_output = data.table()
       model = list()
     }
+    
     ##### IF THE MODEL SUCCESSFULLY RAN 
     if(typeof(model_attempt) != 'character'){
-      failed_output = data.table()
-      variation_output =tryCatch({merge(variations[i,] %>% select(-command) %>% mutate(counter = i), model_to_df(model_attempt) %>% mutate(counter = i))}, error = function(e){data.table()})
-      if(nrow(variation_output) !=0 ) failed_output = data.table() else failed_output = data.table(counter = i, command = command, reason = "", short_error = "error converting to table")
-      if(save_space){
-        model = summary(model_attempt)
-        objects_to_delete = sapply(model, object.size) %>% as.data.frame() %>% rownames_to_column() %>%
-          rename_with(~c('object','size')) %>% filter(size > 10000)  %>% pull(object)
-        objects_to_delete = c(objects_to_delete, 'call_env', 'summary_flags')
-        for(object in objects_to_delete) model[[object]] = NULL
-      }else{
-          model = model_attempt}
+      failed_output = data.table();
+      model = space_saver(model_attempt, save_space)  # remove the actual data from the model outputs 
     }
     
-    #### return the outputs for this particular model 
-    return(list(failed_output = failed_output, variation_output = variation_output, model = model))
-  })
+    return(list(failed_output = failed_output, model = model))})
   
-  variations_new = merge(variations %>% mutate(counter = 1:nrow(.)),unique_commmands) %>% arrange(counter)
-  ### PUT TOGETHER EACH OF THE INDIVIDUAL OUTPUT TYPES 
-  variation_output = lapply(1:nrow(variations), function(i)int_output[[variations_new$reg_num[i]]][['variation_output']]) %>% rbindlist(fill = T, use.names = T)
-  model_output = lapply(1:nrow(variations), function(i)int_output[[variations_new$reg_num[i]]][['model']])
-  failed_output = lapply(1:nrow(variations), function(i)int_output[[variations_new$reg_num[i]]][['failed_output']]) %>% rbindlist(fill = T, use.names = T)
-  if(!full_df) variation_output = variations 
+  ## cleanup results and output 
+  failed_output = list(); model_output= list(); variation_output = list()
+  for( i in 1:nrow(variations)){
+    reg_num = variations$reg_num[i]
+    model_output = append(model_output, list(int_output[[reg_num]]$model))
+    failed_output = append(failed_output, list(int_output[[reg_num]]$failed_output))
+    model_ran = is.null(int_output[[reg_num]]$failed_output)
+    
+    ## add the data-frame version of results 
+    if(model_ran){variation_output =
+      append(variation_output, list(
+        model_to_df(int_output[[reg_num]]$model, grepl('coxph',variations$command[i])) %>% 
+          mutate(counter = i) %>%
+          merge(variations[i,] %>% select(-command))))
+    }else{variation_output = append(variation_output, list(data.frame()))}}
   
-  ## have it output the failed variations 
-  if(nrow(failed_output!=0)){
-    if(nrow(failed_output[short_error != "error converting to table"]) !=0){
-      print(failed_output[short_error != "error converting to table"])
-    }else{print('ran without issues')}}else{print('ran without issues')}
+  failed_output = rbindlist(failed_output); variation_output = rbindlist(variation_output)
+  if(!full_df) variation_output = variations %>% select(-reg_num) # will only actually use the full output if we're doing event studies 
+  
+  ## print if any of the regressions failed
+  if(nrow(failed_output!=0)){ print(failed_output)}else{print('ran without issues')}
   return(list(variation_output = variation_output, model_output = model_output, failed_output = failed_output ))
 }
 
@@ -229,18 +278,18 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
     ## SPLIT APART MULTI-LINE NAMES 
     name_vec = output_matrix[,1]
     for (string_literal in c('\\n', '\\\\n')){
-    for (i in (1:length(name_vec))[grepl(string_literal, name_vec)] ){
-      split_value = str_split(name_vec[i], string_literal)[[1]]
-      name_vec[i] =split_value[1]
-      name_vec[i+1] = split_value[2]
-    }
+      for (i in (1:length(name_vec))[grepl(string_literal, name_vec)] ){
+        split_value = str_split(name_vec[i], string_literal)[[1]]
+        name_vec[i] =split_value[1]
+        name_vec[i+1] = split_value[2]
+      }
     }
     output_matrix[,1] = name_vec
-
+    
     table = capture.output(kable(output_matrix , format = "latex", booktabs = TRUE))
     table[2] =  gsub("\\\\begin\\{tabular\\}\\{l", "", table[2]) %>%
       gsub('l', 'c',.) %>% paste0("\\begin{tabular}{l",.) 
-
+    
     intro_rows = c("", "\\begin{table}[h]",paste0("\\caption{",caption,"}"), "\\begin{center}") 
     end_rows = c(paste0('\\label{',label,'}'), '\\end{center}','\\end{table}')
     table = c(intro_rows, table[-1], end_rows) %>% gsub('toprule', 'hline', .) %>%
@@ -250,7 +299,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
     table = append(table, '\\hline', after =  which(grepl("& \\(1\\) & \\(2\\)", table))[1] )
     table = append(table, '\\hline', after = which(grepl('Num. Obs', table))[1]-1)
     table = append(table, p_values, after = which(grepl('Num. Obs', table))[1]+1)
-
+    
     table = table %>% .[. !="\\addlinespace" ]
   }
   
@@ -364,13 +413,13 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
     
     ## if we're not doing regression analysis 
     if (!all_NA(summary_table_input)){
-        pre_notes_index =   grep('end\\{tabular', table)[1] -1
-        note_num_columns = num_columns +1; if(!all_NA(divisions_before)) note_num_columns = note_num_columns + length(divisions_before)
-        note_line = paste0('\\multicolumn{',note_num_columns,'}{l}{\\parbox{',note_width,
-                           '\\linewidth}{\\scriptsize \\vspace{5 pt}',
-                           paste(notes, collapse = ""), "}}")
-        table = append(table, note_line, after = pre_notes_index)
-      }
+      pre_notes_index =   grep('end\\{tabular', table)[1] -1
+      note_num_columns = num_columns +1; if(!all_NA(divisions_before)) note_num_columns = note_num_columns + length(divisions_before)
+      note_line = paste0('\\multicolumn{',note_num_columns,'}{l}{\\parbox{',note_width,
+                         '\\linewidth}{\\scriptsize \\vspace{5 pt}',
+                         paste(notes, collapse = ""), "}}")
+      table = append(table, note_line, after = pre_notes_index)
+    }
   }
   
   ### Update so that the table actually shows up where it's supposed to
@@ -398,7 +447,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   # output table to file 
   if (!is.na(output_path)){
     writeLines(table, output_path)
-
+    
     if (make_pdf){
       latex_preamble <- "\\documentclass[11pt]{article}\\usepackage{adjustbox,amsmath,amsthm,amssymb,enumitem,graphicx,dsfont,mathrsfs,float,caption,multicol,ragged2e,xcolor,changepage,hyperref,printlen,wrapfig,stackengine, fancyhdr,pdflscape,parskip}\\hypersetup{colorlinks=true, linkcolor=blue, filecolor=magenta, urlcolor=blue,}\\usepackage[margin=1in]{geometry}\\usepackage[utf8]{inputenc}\\renewcommand{\\qedsymbol}{\\rule{0.5em}{0.5em}}\\def\\lp{\\left(}\\def\\rp{\\right)}\\DeclareMathOperator*{\\argmin}{arg\\,min}\\DeclareMathOperator*{\\argmax}{arg\\,max}\\def\\code#1{\\texttt{#1}}\\newcommand\\fnote[1]{\\captionsetup{font=small}\\caption*{#1}}\\usepackage[savepos]{zref}\\raggedcolumns\\RaggedRight\\makeatletter \\makeatother\\def\\bfseries{\\fontseries \\bfdefault \\selectfont\\boldmath}\\graphicspath{{./graphics/}}"
       cat(latex_preamble, '\\begin{document}', table, '\\end{document})',file = 'temp.tex')
@@ -477,11 +526,11 @@ con_fil = function(vector,...,or = T, inc = T){
   strings = c(...)
   
   if (inc){
-  if(or){output = unique(unlist(lapply(strings, function(string){vector[grepl(string, vector)]})))
-  }else{
-    output = vector 
-    for(string in strings) output = output[grepl(string, output)]
-  }
+    if(or){output = unique(unlist(lapply(strings, function(string){vector[grepl(string, vector)]})))
+    }else{
+      output = vector 
+      for(string in strings) output = output[grepl(string, output)]
+    }
   }else{
     output = setdiff(vector,  unique(unlist(lapply(strings, function(string){vector[grepl(string, vector)]}))))
   }
@@ -518,7 +567,7 @@ sub_regression = function(...,output_model= F, predicted = F,
       merge(data.frame(index = 1:max_length), all = T) %>%
       .[,2]
     return(output)
-    }
+  }
 }
 
 remove_if_NA = function(df, ...){
@@ -530,9 +579,9 @@ remove_if_NA = function(df, ...){
 expand = function(..., names, order = NULL){
   input = list(...)
   if(is.null(order)){
-
-  output = expand.grid(rev(input), stringsAsFactors = F) %>%
-    select(rev(everything())) %>% rename_with(~names) %>% as.data.table()
+    
+    output = expand.grid(rev(input), stringsAsFactors = F) %>%
+      select(rev(everything())) %>% rename_with(~names) %>% as.data.table()
   }else{
     rev_order = rep(0,length(order))
     for (i in seq_along(order)) rev_order[i] = which(order == i)[1]
@@ -552,20 +601,20 @@ gpaste <- function(..., order = NA, collapse_str = NA, no_expand = F) {
   # Get the list of arguments as input
   args <- list(...)
   if (!no_expand){
-  # Create a data frame with all combinations of the arguments
-  if (any(is.na(order))){
-    
-    combinations <- expand.grid(rev(args), stringsAsFactors = FALSE)
-    combinations = combinations[, rev(seq_along(combinations))]
-  }else{
-    rev_order = rep(0,length(order))
-    for (i in seq_along(order)) rev_order[i] = which(order == i)[1]
-    rev_order = length(args) + 1 - rev_order
-    combinations = expand.grid(rev(args[order]), stringsAsFactors = F)
-    combinations = combinations[, rev_order]
-  }
-  # Concatenate the combinations row-wise
-  output <- apply(combinations, 1, paste0, collapse = "")
+    # Create a data frame with all combinations of the arguments
+    if (any(is.na(order))){
+      
+      combinations <- expand.grid(rev(args), stringsAsFactors = FALSE)
+      combinations = combinations[, rev(seq_along(combinations))]
+    }else{
+      rev_order = rep(0,length(order))
+      for (i in seq_along(order)) rev_order[i] = which(order == i)[1]
+      rev_order = length(args) + 1 - rev_order
+      combinations = expand.grid(rev(args[order]), stringsAsFactors = F)
+      combinations = combinations[, rev_order]
+    }
+    # Concatenate the combinations row-wise
+    output <- apply(combinations, 1, paste0, collapse = "")
   }else {output = do.call(paste0, args)}
   if (!is.na(collapse_str)) output = paste(output, collapse = collapse_str)
   return(output)
@@ -594,7 +643,7 @@ import_file <- function(filepath, col_select = NULL, data_table = T, char_vars =
   if (grepl("\\.parquet$", filepath, ignore.case = TRUE)) {
     file <- import_parquet(filepath, col_select = col_select, data_table = T) %>%
       mutate(across(char_vars, ~as.character(.)))
-    } else if (grepl("\\.xlsx$|\\.xls$", filepath, ignore.case = TRUE)) {
+  } else if (grepl("\\.xlsx$|\\.xls$", filepath, ignore.case = TRUE)) {
     file <- read_excel(filepath) %>% as.data.table() 
   } else if (grepl("\\.csv$", filepath, ignore.case = TRUE)) {
     file <- import_csv(filepath, col_select = col_select, char_vars = char_vars, nrows = nrows)
