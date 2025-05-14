@@ -16,13 +16,16 @@ rm(list = ls());
 ## import helper functions 
 source('2) code/0_set_parameter_values.R')
 
+## set the ind vars that we're going to use for all the blocks 
+ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean')
+base_env = c(base_env, 'ind_vars')
 ## NB Block 1 is the balance tests; Block 2 is the comparison of different explanatory variables
 # 3 firm yr lvl analysis -------------------------------------------------------------------------
 block_num =3 
 input_file = paste0(inputs_dir,'16c_firm_yr_lvl.parquet')
 
 ## total domestic revenue 
-ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean')
+
 interactions = list(c('log_empl', 'log_capital'),
                     gpaste('nace_', c('entrance_rate', 'exit_rate', 'churn_rate')),
                     gpaste('nace_de_trended_log_variance_', c('ind', 'group'), "_lvl"))
@@ -88,7 +91,6 @@ rm(list= setdiff(ls(), base_env)); gc()
 block_num = 4
 input_file = paste0(inputs_dir, '16d_firm_ctry_yr_lvl.parquet')
 ## set up mkt revenue regressions 
-ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean')
 controls =  "+ log_age + log_dom_turnover + log_comp_rnd + comp_weighted_prestige + nace_mkt_share_active_exporters + mkt_share_active_exporters"
 interactions = {list(c('log_other_market_rev', 'log_dom_turnover','log_num_markets','log_comp_now','first_time_in_ctry',  'first_time_exporting'),
                      c(gpaste('mkt_', c('entrance', 'exit', 'failure', 'churn'), "_rate"),
@@ -147,7 +149,6 @@ input_file = file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet')
 block_num= 5
 ## run dom variance regressions 
 dep_var =  'detrended_var_log_dom_turnover'
-ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean')
 control_vars = '+log_dom_turnover + log_comp_rnd + comp_weighted_prestige +log_min_age_dom_rev_observed'
 fe = "| NACE_BR + years_dom_rev_observed + min_first_year_dom_rev_observed"
 interactions = {list(gpaste('log_', c('empl', 'capital', 'dom_turnover')),
@@ -199,7 +200,6 @@ input_file = file.path(inputs_dir, '16g_firm_ctry_lvl_collapsed_variance.parquet
 block_num = 6
 
 ## Setup mkt revenue regressions 
-ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean')
 controls = "+ log_export_rev_customs + log_dom_turnover + log_min_age + log_comp_rnd + comp_weighted_prestige + log_years_observed + nace_mkt_share_active_exporters + mkt_share_active_exporters"
 interactions = {list(c('log_export_rev_customs','log_other_market_rev', 'log_dom_turnover',
                       'log_num_markets','log_comp_now','first_time_in_ctry',  'first_time_exporting'),
@@ -232,7 +232,6 @@ rm(list= setdiff(ls(), base_env)); gc()
 
 # 7 ctry entry analysis ----------------------------------------------------
 block_num = 7; min_pop_rank = 20
-ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean')
 interactions = {list(
   # domestic scale effects 
   c('log_dom_turnover','log_empl', 'log_capital'),
