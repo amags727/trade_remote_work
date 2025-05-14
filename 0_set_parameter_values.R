@@ -9,7 +9,8 @@ source('2) code/00_helper_functions.R')
 
 ## SET ADMIN PARAMETER VALUES 
   dummy_version = grepl('amagnuson', getwd());
-  running_regressions = !grepl('amagnuson', getwd());
+  running_regressions = T #!grepl('amagnuson', getwd());
+  enforce_pauses = grepl('amagnuson', getwd())
   make_randomized = F #grepl('amagnuson', getwd());
   
   make_linkedin_vars_complete = T; make_birth_data = T; make_firm_yr = T; 

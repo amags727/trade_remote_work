@@ -15,8 +15,6 @@ rm(list = ls());
 source('2) code/0_set_parameter_values.R')
 
 
-
-
 # update firm_yr_lvl ------------------------------------------------------
 import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet')) %>% 
   .[, `:=`(log_empl = asinh(empl), log_capital = asinh(capital))] %>% 

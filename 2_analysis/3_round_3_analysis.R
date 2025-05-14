@@ -79,7 +79,7 @@ if(running_regressions){
   variation_output = rbind(variations_dom_rev,variations_export_rev,variations_export_entry)
   nec_vars = c(extract_model_vars(variation_output$command))
   base_data = import_file(input_file, col_select = nec_vars) %>% remove_if_NA('age', 'log_comp_data')
-  output = evaluate_variations(variation_output, full_df = F)
+  output = evaluate_variations(variation_output, full_df = F); pause_for_check(enforce_pauses)
   write_rds(output, paste0(raw_output_dir,paste0('block_',block_num,'.rds')))
   }
 ## cleanup 
@@ -89,11 +89,11 @@ block_num = 4
 input_file = paste0(inputs_dir, '16d_firm_ctry_yr_lvl.parquet')
 ## set up mkt revenue regressions 
 ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean')
-controls =  "+ log_age + log_dom_turnover + log_comp_rnd + comp_weighted_prestige"
+controls =  "+ log_age + log_dom_turnover + log_comp_rnd + comp_weighted_prestige + nace_mkt_share_active_exporters + mkt_share_active_exporters"
 interactions = {list(c('log_other_market_rev', 'log_dom_turnover','log_num_markets','log_comp_now','first_time_in_ctry',  'first_time_exporting'),
                      c(gpaste('mkt_', c('entrance', 'exit', 'failure', 'churn'), "_rate"),
                        gpaste('mkt_de_trended_log_variance_', c('ind', 'group'), "_lvl")),
-                     c('log_distance_to_france', 'log_mkt_size_rev', 'mkt_share_active_exporters',
+                     c('log_distance_to_france', 'log_mkt_size_rev', gpaste(c('', 'nace_'), 'mkt_share_active_exporters'),
                        gpaste('grav_',c('region', 'language', 'border')))
 )}
 interactions = lapply(interactions, function(x) append('', gpaste('*',x)))
@@ -136,7 +136,7 @@ variation_output = rbind(variations_mkt_rev,variations_mkt_exit)
 if(running_regressions){
   nec_vars = c(extract_model_vars(variation_output$command))
   base_data = import_file(input_file, col_select = nec_vars) %>% remove_if_NA('log_age', 'log_comp_data')
-  output = evaluate_variations(variation_output, full_df = F)
+  output = evaluate_variations(variation_output, full_df = F);pause_for_check(enforce_pauses)
   write_rds(output, paste0(raw_output_dir,paste0('block_',block_num,'.rds')))
 }
 ## cleanup 
@@ -189,7 +189,7 @@ variation_output = rbindlist(list(variations_dom_rev, variations_export_var), fi
 if(running_regressions){
   nec_vars = c(extract_model_vars(variation_output$command))
   base_data = import_file(input_file, col_select = nec_vars) %>% remove_if_NA('log_comp_data') %>% filter(!(is.na(log_min_age_exports_observed & log_min_age_dom_rev_observed)))
-  output = evaluate_variations(variation_output, full_df = F)
+  output = evaluate_variations(variation_output, full_df = F);pause_for_check(enforce_pauses)
   write_rds(output, paste0(raw_output_dir,paste0('block_',block_num,'.rds')))
 }
 ## cleanup 
@@ -200,12 +200,12 @@ block_num = 6
 
 ## Setup mkt revenue regressions 
 ind_vars = c('log_comp_data', 'comp_data_nace_pct_rank', 'comp_data_nace_sd_from_mean')
-controls = "+ log_export_rev_customs + log_dom_turnover + log_min_age + log_comp_rnd + comp_weighted_prestige + log_years_observed"
+controls = "+ log_export_rev_customs + log_dom_turnover + log_min_age + log_comp_rnd + comp_weighted_prestige + log_years_observed + nace_mkt_share_active_exporters + mkt_share_active_exporters"
 interactions = {list(c('log_export_rev_customs','log_other_market_rev', 'log_dom_turnover',
                       'log_num_markets','log_comp_now','first_time_in_ctry',  'first_time_exporting'),
                     c(gpaste('mkt_', c('entrance', 'exit', 'failure', 'churn'), "_rate"),
                       gpaste('mkt_de_trended_log_variance_', c('ind', 'group'), "_lvl")),
-                    c('log_distance_to_france', 'log_mkt_size_rev', 'mkt_share_active_exporters',
+                    c('log_distance_to_france', 'log_mkt_size_rev',gpaste(c('', 'nace_'), 'mkt_share_active_exporters'),
                       gpaste('grav_',c('region', 'language', 'border'))))}; interactions = lapply(interactions, function(x) append('', gpaste('*',x)))
 
 variations = expand(1:length(interactions), 1:length(ind_vars), names = c('i','j'))%>% .[,counter := 1:nrow(.)]
@@ -224,7 +224,7 @@ variation_output = rbindlist(lapply(variations$counter, function(index){for (nam
 if(running_regressions){
   nec_vars = c(extract_model_vars(variation_output$command))
   base_data = import_file(input_file, col_select = nec_vars) %>% remove_if_NA('log_comp_data', 'log_min_age')
-  output = evaluate_variations(variation_output, full_df = F)
+  output = evaluate_variations(variation_output, full_df = F);pause_for_check(enforce_pauses)
   write_rds(output, paste0(raw_output_dir,paste0('block_',block_num,'.rds')))
 }
 ## cleanup 
@@ -244,9 +244,10 @@ interactions = {list(
   c(gpaste('mkt_', c('entrance', 'exit', 'failure', 'churn'), "_rate"), gpaste('mkt_de_trended_log_variance_', c('ind', 'group'), "_lvl")),
   
   # destination mkt popularity / gravity 
-  c('log_distance_to_france', 'log_mkt_size_rev', 'mkt_share_active_exporters',gpaste('grav_',c('region', 'language', 'border'))))}
+  c('log_distance_to_france', 'log_mkt_size_rev', gpaste(c('', 'nace_'), 'mkt_share_active_exporters'),gpaste('grav_',c('region', 'language', 'border'))))}
 interactions = lapply(interactions, function(x) append('', gpaste('*',x)))
-control_vars = paste(" ",'log_dom_turnover','log_comp_rnd','comp_weighted_prestige', sep = "+")
+control_vars = paste(" ",'log_dom_turnover','log_comp_rnd','comp_weighted_prestige',
+                     'nace_mkt_share_active_exporters',  'mkt_share_active_exporters', sep = "+")
 
 variations = expand(1:length(interactions), 1:length(ind_vars), names = c('i','j'))%>% .[,counter := 1:nrow(.)]
 variation_output = rbindlist(lapply(variations$counter, function(index){for (name in names(variations)) assign(name, variations[[name]][index])
@@ -268,10 +269,11 @@ if(running_regressions){
   nec_vars = c(extract_model_vars(variation_output$command), 'mkt_all_time_popularity_rank')
   base = rbindlist(lapply(list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE), function(file){
     import_file(file, col_select = nec_vars)[mkt_all_time_popularity_rank <= min_pop_rank]}))
-  output = evaluate_variations(variation_output, full_df = F)
+  output = evaluate_variations(variation_output, full_df = F);pause_for_check(enforce_pauses)
   write_rds(output, paste0(raw_output_dir,paste0('block_',block_num,'.rds')))
 }
 ## cleanup 
 rm(list= setdiff(ls(), base_env)); gc()
+
 
 

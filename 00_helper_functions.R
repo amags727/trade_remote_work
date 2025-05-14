@@ -99,7 +99,6 @@ evaluate_variations = function(variations, save_space = T, full_df = T){
     
     ### IF THE MODEL FAILED TO RUN 
     if(typeof(model_attempt) == 'character'){
-      print(paste0('failed row ',i,": ", command));
       short_error = case_when(
         grepl('of the formula but', gsub('\\n',' ',model_attempt)) ~ 'missing variable',
         grepl('The dependent variable', model_attempt) & grepl("is a constant", model_attempt) ~ "constant dep. var",
@@ -142,7 +141,13 @@ evaluate_variations = function(variations, save_space = T, full_df = T){
   if(nrow(failed_output!=0)){ print(failed_output)}else{print('ran without issues')}
   return(list(variation_output = variation_output, model_output = model_output, failed_output = failed_output ))
 }
-
+pause_for_check = function(enforce){
+  if (enforce){
+  repeat {
+  ans <- readline('press any key to acknowledge: ')
+  if (nzchar(ans)) return(ans)
+  }
+}}
 display_value = function(x, parens = F){
   vapply(x, function(single_x) { 
     if (is.na(single_x)){out = "NA"

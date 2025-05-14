@@ -130,11 +130,6 @@ lapply(1:length(chunk_list), function(chunk_num){
 }
 })
 
-# combine piecewise output--------------------------------------------------
-#now just combining in 5_
-#write_parquet(rbindlist(lapply(list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE),import_file)),
-#              file.path(inputs_dir, '16e_ctry_entrance.parquet'))
-#unlink('1) data/temp_data',recursive = T, force = T )
 # clear ------------------------------
 rm(list= setdiff(ls(), base_env)); gc()
 
