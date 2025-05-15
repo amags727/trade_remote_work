@@ -106,12 +106,16 @@ output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #on
       .[, (gpaste(d_vars,'_',inner,'_sd_from_mean',outer)) := lapply(d_vars, function(x)(get(x)- NA_mean(get(x)))/ NA_sd(get(x))), by = group]
   }
   }
+  
+  # add year variables for event study 
+  vars_to_yr = c('comp_data', 'log_comp_data')
+  for (yr in year_range) output[, (gpaste(vars_to_yr, "_y", yr)) := lapply(vars_to_yr, function(x) ifelse(year == yr, get(x), 0))]
+  
 
 
 
 
 write_parquet(output,file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parquet'))
-
 # clear ------------------------------
 rm(list= setdiff(ls(), base_env)); gc()
 

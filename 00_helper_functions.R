@@ -64,20 +64,25 @@ extract_model_vars <- function(cmd_list){
   }
   return(unique(unlist(lapply(cmd_list, extract_from_single_command))) %>% setdiff(., c('~')))
 }
-evaluate_variations = function(variations, save_space = T, full_df = T){
-  model_to_df = function(model, is_cox){
-    if(!is_cox){
-      output =  data.frame(regressor = names(model$coefficients)) %>% mutate(
-        year =  as.numeric(str_extract(regressor, '\\d{4}')),
-        coef = as.numeric(model$coefficients),
-        se = as.numeric(summary(model)$se), 
-        p_val = round(summary(model)$coeftable[, "Pr(>|t|)"],3),
-        lb = coef - 1.96*se, ub = coef + 1.96*se)
-    }else{
-      output = data.frame()
-    }
-    return(output)
+model_to_df = function(model, is_cox){
+  if(!is_cox){
+    output =  data.frame(regressor = names(model$coefficients)) %>% mutate(
+      year =  as.numeric(str_extract(regressor, '\\d{4}')),
+      coef = as.numeric(model$coefficients),
+      se = as.numeric(summary(model)$se), 
+      p_val = round(summary(model)$coeftable[, "Pr(>|t|)"],3),
+      lb = coef - 1.96*se, ub = coef + 1.96*se)
+  }else{
+    output = data.frame(regressor = rownames(model$coefficients)) %>% mutate(
+      year = as.numeric(str_extract(regressor, '\\d{4}')),
+      coef = as.numeric(model$coefficients[,'coef']),
+      se = as.numeric(model$coefficients[,'robust se']),
+      p_val = round(as.numeric(model$coefficients[,'Pr(>|z|)']),3),
+      lb = coef - 1.96*se, ub = coef + 1.96*se)
   }
+  return(output)
+}
+evaluate_variations = function(variations, save_space = T, full_df = T){
   space_saver = function(model, save_space){
     if(save_space){
       model = summary(model)
@@ -127,15 +132,15 @@ evaluate_variations = function(variations, save_space = T, full_df = T){
     model_ran = is.null(int_output[[reg_num]]$failed_output)
     
     ## add the data-frame version of results 
-    if(model_ran){variation_output =
-      append(variation_output, list(
-        model_to_df(int_output[[reg_num]]$model, grepl('coxph',variations$command[i])) %>% 
-          mutate(counter = i) %>%
-          merge(variations[i,] %>% select(-command))))
-    }else{variation_output = append(variation_output, list(data.frame()))}}
+    is_cox = grepl('coxph',variations$command[i])
+    temp = tryCatch({model_to_df(int_output[[reg_num]]$model, is_cox)}, error = function(e){data.frame()}) %>%
+          mutate(counter = i) %>% merge(variations[i,] %>% select(-command))
+    variation_output = append(variation_output, list(temp))
+  }
+  failed_output = rbindlist(failed_output); variation_output = rbindlist(variation_output, fill = T, use.names = T)
   
-  failed_output = rbindlist(failed_output); variation_output = rbindlist(variation_output)
-  if(!full_df) variation_output = variations %>% select(-reg_num) # will only actually use the full output if we're doing event studies 
+  # will only actually use the full output if we're doing event studies 
+  if(!full_df) variation_output = variations %>% select(-reg_num) 
   
   ## print if any of the regressions failed
   if(nrow(failed_output!=0)){ print(failed_output)}else{print('ran without issues')}
@@ -212,7 +217,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
                         custom_rows =NA, custom_row_placement = NA,  
                         headers = NA, divisions_before = NA, notes = NA,
                         note_width = .5, output_path = NA, caption = NULL, rescale_factor = NA, spacer_size = NA,
-                        coef_order = NA, cox = F,make_pdf= T, final_commands = NA_character_){
+                        coef_order = NA, cox = F,make_pdf= T,make_tex = T, final_commands = NA_character_){
   if(!all_NA(coef_names)) coef_names = gsub('\\\\\\&', 'specialampreplacement',coef_names)
   insert_column_space <- function(input_string,after_column, og_columns) {
     # Count the number of '&' characters
@@ -451,7 +456,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   
   # output table to file 
   if (!is.na(output_path)){
-    writeLines(table, output_path)
+    if (make_tex) writeLines(table, output_path)
     
     if (make_pdf){
       latex_preamble <- "\\documentclass[11pt]{article}\\usepackage{adjustbox,amsmath,amsthm,amssymb,enumitem,graphicx,dsfont,mathrsfs,float,caption,multicol,ragged2e,xcolor,changepage,hyperref,printlen,wrapfig,stackengine, fancyhdr,pdflscape,parskip}\\hypersetup{colorlinks=true, linkcolor=blue, filecolor=magenta, urlcolor=blue,}\\usepackage[margin=1in]{geometry}\\usepackage[utf8]{inputenc}\\renewcommand{\\qedsymbol}{\\rule{0.5em}{0.5em}}\\def\\lp{\\left(}\\def\\rp{\\right)}\\DeclareMathOperator*{\\argmin}{arg\\,min}\\DeclareMathOperator*{\\argmax}{arg\\,max}\\def\\code#1{\\texttt{#1}}\\newcommand\\fnote[1]{\\captionsetup{font=small}\\caption*{#1}}\\usepackage[savepos]{zref}\\raggedcolumns\\RaggedRight\\makeatletter \\makeatother\\def\\bfseries{\\fontseries \\bfdefault \\selectfont\\boldmath}\\graphicspath{{./graphics/}}"

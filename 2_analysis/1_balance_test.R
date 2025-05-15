@@ -22,12 +22,6 @@ exporter_vars = c('currently_export','total_export_rev_customs', "num_export_cou
                 "avg_products_per_ctry", 'avg_streak_age','intermarket_hhi',
                 gpaste('export_mkt_avg_comp_', c('now', 'l5', 'ever')))
 
-headers = gpaste("&",gpaste('\\multicolumn{5}{c}{',
-          c('All Firms', 'Young Firms (age $<$ 5)', 'Mature Firms (age $\\ge$ 5)'), "}",
-          collapse_str = "& &"),'\\\\')
-
-notes = c("Quartile Ranks are at the four digit NACE code $\\times$ year level. Standard Deviation in parentheses.")
-
 base_data =  import_file(file.path(inputs_dir,'16c_firm_yr_lvl.parquet')) %>% 
   .[!is.na(age)] %>% 
   .[currently_export == F, (setdiff(exporter_vars, 'currently_export')) := NA] %>% 
