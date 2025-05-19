@@ -193,7 +193,10 @@ reshape_to_summary = function(base_data, int_vars, key_variable, eliminate_na = 
 
 model_coef = function(model_output, cox = F){
   if(!cox) return(unique(unlist(lapply(model_output, function(model){names(model$coefficients)}))))
-  if(cox)  return(unique(unlist(lapply(model_output, function(model){rownames(model$coefficients)}))))
+  if(cox)  return(unique(unlist(lapply(model_output, function(model){
+    setdiff(rownames(model$coefficients),
+            model$coefficients %>% as.data.frame() %>% filter(is.na(coef)) %>% rownames())
+  }))))
 }
 
 comp_coef_names = function(original, new){
@@ -248,7 +251,9 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   ## method for making the base table if we're doing regression analysis
   if (all_NA(summary_table_input)){
     num_columns = length(model_inputs)
-    if(cox){ actual = lapply(model_inputs, function(model){rownames(model$coefficients)})
+    if(cox){ actual = lapply(model_inputs, function(model){
+      setdiff(rownames(model$coefficients),
+              model$coefficients %>% as.data.frame() %>% filter(is.na(coef)) %>% rownames())})
     }else{  actual = lapply(model_inputs, function(model){names(model$coefficients)})}
     actual = actual %>% unlist() %>% unique()
     
@@ -259,7 +264,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
     
     for (i in 1:length(model_inputs)){
       if(cox){
-        temp_model = model_inputs[[i]]$coefficients %>% as.data.frame()
+        temp_model = model_inputs[[i]]$coefficients %>% as.data.frame() %>% filter(!is.na(coef))
       }else{
         temp_model = data.frame(coef = as.numeric(model_inputs[[i]]$coefficients),
                                 "se(coef)"= as.numeric(model_inputs[[i]]$se),

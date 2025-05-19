@@ -130,7 +130,6 @@ block_num= 5
 ind_vars = 'log_comp_data'
 
 ## run dom variance regressions 
-
 dep_var =  'detrended_var_log_dom_turnover'
 control_vars = '+log_dom_turnover + log_comp_rnd + comp_weighted_prestige +log_min_age_dom_rev_observed'
 fe = "| NACE_BR + years_dom_rev_observed + min_first_year_dom_rev_observed"
