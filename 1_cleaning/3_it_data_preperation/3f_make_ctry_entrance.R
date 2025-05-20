@@ -40,7 +40,7 @@ linkedin_firm_lvl = import_file(linkedin_basic_path, col_select = linkedin_firm_
 ## market lvl data 
 base_ctry_lvl =  import_file(file.path(inputs_dir,'16d_firm_ctry_yr_lvl.parquet'))
 ctry_lvl_constants =  base_ctry_lvl %>%
-  select('ctry',con_fil(con_fil(names(.),"grav", 'variance', 'distance'),'nace', inc = F)) %>%
+  select('ctry',con_fil(con_fil(names(.),"grav", 'variance', 'distance'),'nace', 'extended','either', inc = F)) %>%
   unique()
 nace_ctry_lvl_constants = base_ctry_lvl %>%
   select('ctry', 'NACE_BR', con_fil(names(.), 'nace', 'variance', or = F)) %>% unique()

@@ -1,3 +1,21 @@
+# setup -------------------------------------------------------------------
+rm(list = ls());
+
+## set working directory dynamically 
+{
+  library(dplyr)
+  root = case_when(
+    ## AZM running locally and not testing if it will work CASD 
+    grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work",
+    
+    ## update as makes sense for CASD / your own use 
+    T ~ "idk ")
+  setwd(root)
+}
+
+## import helper functions 
+source('2) code/0_set_parameter_values.R')
+
 # set parameters /import files  -----------------------------------------------------------
 
 # set main parameter values 
@@ -20,12 +38,13 @@
   firm_yr_lvl = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) %>%
                 .[year %in% year_range] %>% distinct(firmid, year, .keep_all = T)
   
-  customs_data = c('firmid', 'ctry','streak_id', 'exim', 'products', 'deflated_value',  'year',
-                   gpaste('export_',c('region', 'language', 'border'))) %>%
+  export_data = c('firmid', 'ctry','streak_id', 'exim', 'products', 'deflated_value',  'year') %>%
     import_file('1) data/9_customs_cleaned.csv', col_select = ., char_vars = 'firmid') %>%
-    .[year %in% year_range & ctry != 'FR'] %>% distinct(firmid,year,ctry,exim, streak_id, .keep_all = T)
-  
-  
+    .[year %in% year_range & ctry != 'FR' & exim == 2] %>% .[, exim := NULL] %>% distinct(firmid,year,ctry, streak_id, .keep_all = T) %>%
+    rename('export_rev_customs' = 'deflated_value') %>% remove_if_NA('export_rev_customs')
+    
+  similiarity_data = import_file ('1) data/similarity_matrices/outputs/similiarity_data.rds')
+
   linkedin_ctry_lvl = import_file(linkedin_ctry_lvl_path)
   linkedin_firm_lvl = import_file(linkedin_basic_path, col_select = linkedin_vars) %>% 
     .[,paste0('log_',linkedin_to_log) := lapply(.SD,asinh), .SDcols = linkedin_to_log] 
@@ -34,13 +53,25 @@
   customs_birth_data = import_file(file.path(inputs_dir, '16b_firm_ctry_lvl_birth_data.parquet'))
   french_distances = fread('1) data/similarity_matrices/outputs/france_distance_data.csv') 
 # merge and clean  -----------------------------------------------------------
-output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #only necessary for the dummy versions (hopefully)
-  rename_with(~gsub('export_','grav_',. )) %>% rename('export_rev_customs' = 'deflated_value') %>% 
-  remove_if_NA('export_rev_customs') %>% 
-  
-  ## focus on exports 
-  .[exim == 2] %>% .[,exim := NULL] %>% 
-  
+
+## add (extended) gravity 
+grav_cats =  c('region', 'border', 'language')
+export_data[,(paste0('extended_grav_', grav_cats)) := F]
+for (i in 1:nrow(similiarity_data)){
+ mkt =  similiarity_data$ctry[i]
+ for (x in grav_cats) assign(gpaste(x, '_list'), setdiff(similiarity_data[[paste0('share_',x)]][i][[1]],mkt))
+
+ if (mkt == 'FR'){
+   export_data[,(paste0('grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"), function(x) ctry %in% get(x))]
+ }else{
+ export_data[ctry == mkt,
+             (paste0('extended_grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"),
+             function(x) any(ctry %in% get(x))), by = .(firmid,year)]
+ }
+}
+export_data[, (paste0('either_grav_', grav_cats)) := lapply(grav_cats, function(x) get(paste0('grav_', x)) | get(paste0('extended_grav_', x)))] 
+
+output = export_data %>% 
   # add num markets
   .[, num_markets := .N, by = .(firmid, year)] %>% 
   
@@ -114,9 +145,6 @@ output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #on
   vars_to_yr = c('comp_data', 'log_comp_data')
   for (yr in year_range) output[, (gpaste(vars_to_yr, "_y", yr)) := lapply(vars_to_yr, function(x) ifelse(year == yr, get(x), 0))]
   
-
-
-
 
 write_parquet(output,file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parquet'))
 # clear ------------------------------

@@ -64,12 +64,12 @@ firm_ctry_yr_lvl = import_file(file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parqu
 relative_vars = gpaste(c('comp_data', 'share_comp_data'), "_",
                        c('nace', 'nace_exporter', 'ctry', 'ctry_nace'), "_", 
                        gpaste(c('pct_rank', 'sd_from_mean'), c('', "_age")))
-vars_to_first = c('streak_start', paste0('first_time_',c('exporting','in_ctry')),'distance_to_france',
-                  gpaste('grav_', c('border', 'region', 'language')))
+vars_to_first = c('streak_start', paste0('first_time_',c('exporting','in_ctry')),'distance_to_france')
 vars_to_min = c('age', 'streak_age', 'year')
 vars_to_mean = c('num_markets', 'products', 'other_market_rev',
                  gpaste("comp_", c('ever', 'l5', 'now', 'data', 'rnd', 'weighted_prestige')),
                  'dom_turnover', 'export_rev_customs', 'share_comp_data', relative_vars, 
+                 gpaste(c('', 'extended_', 'either_'), 'grav_',  c('region', 'border', 'language')),
                  con_fil(con_fil(names(firm_ctry_yr_lvl), 'mkt'), 'log_nace', 'log_mkt','mkt_log_variance', inc = F))
 vars_to_log = c('distance_to_france','min_age', 'min_streak_age','years_observed',
                 con_fil(vars_to_mean, 'weighted_prestige', 'rate', 'variance', 'share_active','share_comp_data', inc = F))

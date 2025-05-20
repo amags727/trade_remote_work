@@ -1,3 +1,20 @@
+# setup -------------------------------------------------------------------
+rm(list = ls());
+
+## set working directory dynamically 
+{
+  library(dplyr)
+  root = case_when(
+    ## AZM running locally and not testing if it will work CASD 
+    grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work",
+    
+    ## update as makes sense for CASD / your own use 
+    T ~ "idk ")
+  setwd(root)
+}
+
+## import helper functions 
+source('2) code/0_set_parameter_values.R')
 
 # generate cleaned version of admin birth/death ---------------------------
 if(cleaning_admin){
@@ -62,7 +79,7 @@ birth_data = birth_data %>% unique() %>% merge(customs_birth_data, all = T) %>% 
               T~ NA)),  .SDcols = first_cust] %>% 
   
   ## add consolidate death data
-  .[,last_observed := case_when(firmid %in% br_death$firmid ~ last_observed_br,
+  .[,last_observed := case_when(firmid %in% br_birth_data$firmid ~ last_observed_br,
                             firmid %in% birth_data$firmid ~ last_observed_admin,
                             T ~ last_observed_customs)]
 

@@ -28,9 +28,32 @@ rm(list= setdiff(ls(), base_env)); gc()
 
 # 2 firm ctry year  ---------------------------------------------------------
 file_name = file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parquet')
+
+
 base = import_file(file_name) %>%
   calc_churn_rates(., 'ctry', 'streak_start', 'last_year_of_streak', 'year', 'mkt') %>%
   calc_churn_rates(., c('ctry','NACE_BR'), 'streak_start', 'last_year_of_streak', 'year', 'nace_mkt')
+
+## add (extended) gravity 
+similiarity_data = import_file ('1) data/similarity_matrices/outputs/similiarity_data.rds')
+grav_cats =  c('region', 'border', 'language')
+base[,(paste0('extended_grav_', grav_cats)) := F]
+for (i in 1:nrow(similiarity_data)){
+  mkt =  similiarity_data$ctry[i]
+  for (x in grav_cats) assign(gpaste(x, '_list'), setdiff(similiarity_data[[paste0('share_',x)]][i][[1]],mkt))
+  
+  if (mkt == 'FR'){
+    base[,(paste0('grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"), function(x) ctry %in% get(x))]
+  }else{
+    base[ctry == mkt,
+         (paste0('extended_grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"),
+         function(x) any(ctry %in% get(x))), by = .(firmid,year)]
+  }
+}
+base[, (paste0('either_grav_', grav_cats)) := lapply(grav_cats, function(x) get(paste0('grav_', x)) | get(paste0('extended_grav_', x)))] 
+
+
+
 write_parquet(base, file_name)
 rm(list= setdiff(ls(), base_env)); gc()
 
@@ -50,7 +73,9 @@ write_parquet(base, file.path(inputs_dir, '16f_firm_lvl_collapsed_variance.parqu
 rm(list= setdiff(ls(), base_env)); gc()
 
 # 4 firm market variance  ---------------------------------------------------
-vars_to_mean =  gpaste(c('mkt_', 'nace_mkt_'), c('entrance', 'exit', 'churn'), "_rate")
+vars_to_mean =  c(gpaste(c('mkt_', 'nace_mkt_'), c('entrance', 'exit', 'churn'), "_rate"),
+                  gpaste(c('', 'extended_', 'either_'), 'grav_',  c('region', 'border', 'language')))
+
 
 new_meaned = import_file(file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parquet')) %>% 
   remove_if_NA(., 'year', 'export_rev_customs', 'comp_data','NACE_BR') %>%
@@ -67,10 +92,13 @@ rm(list= setdiff(ls(), base_env)); gc()
 # 5 firm ctry entrance  ---------------------------------------------------
 firm_yr_vars = c('firmid', 'year', gpaste('nace_', c('entrance', 'exit', 'churn'), "_rate"))
 firm_yr = import_file(file.path(inputs_dir, '16c_firm_yr_lvl.parquet'), col_select = firm_yr_vars) 
+base_ctry_lvl =  import_file(file.path(inputs_dir,'16d_firm_ctry_yr_lvl.parquet')) %>% 
+  select('ctry', con_fil(con_fil(names(.),"grav"), 'extended','either', inc = F)) %>% unique()
+
 
 for (file in list.files('1) data/temp_data',recursive = TRUE, full.names = TRUE)){
-  import_file(file,char_vars = 'firmid') %>% select(-intersect(names(.), firm_yr_vars[-c(1:2)])) %>% 
-    merge(firm_yr, all.x = T,  by = c('firmid','year')) %>%
+  import_file(file,char_vars = 'firmid') %>% select(-c(intersect(names(.), firm_yr_vars[-c(1:2)]), con_fil(names(.),"grav"))) %>% 
+    merge(firm_yr, all.x = T,  by = c('firmid','year')) %>% merge(base_ctry_lvl, all.x = T, by = 'ctry') %>% 
     fwrite(.,file)
 }
 rm(list= setdiff(ls(), base_env)); gc()
