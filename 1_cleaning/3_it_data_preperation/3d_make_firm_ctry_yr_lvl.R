@@ -77,7 +77,8 @@ output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #on
     variance_metrics(time_id = 'year', group_id = 'ctry', ind_id = 'streak_id',
                    int_id = 'export_rev_customs',  birth_id = 'streak_start', logged_version = T, prefix = 'mkt_',
                    full_dataset = T) %>% 
-  
+    calc_churn_rates(., 'ctry', 'streak_start', 'last_year_of_streak', 'year', 'mkt') %>%
+    
     # NACE / ctry 
     .[, `:=`(nace_mkt_failure_rate = NA_sum(year == streak_start & year == streak_end) / NA_sum(!is.na(streak_start + streak_end)),
              nace_mkt_num_exporters = uniqueN(firmid),
@@ -86,6 +87,8 @@ output = customs_data %>% distinct(firmid,ctry,year,exim, .keep_all = T) %>% #on
     variance_metrics(time_id = 'year', group_id = 'nace_mkt', ind_id = 'streak_id',
                    int_id = 'export_rev_customs',  birth_id = 'streak_start', logged_version = T, prefix = 'nace_mkt_',
                    full_dataset = T)  %>% select(-nace_mkt) %>% 
+    calc_churn_rates(., c('ctry','NACE_BR'), 'streak_start', 'last_year_of_streak', 'year', 'nace_mkt') %>% 
+    
     #cleanup 
     .[, `:=`(nace_mkt_share_active_exporters = nace_mkt_num_exporters / nace_num_exporters,
             mkt_share_active_exporters =  mkt_num_exporters/ num_exporters,

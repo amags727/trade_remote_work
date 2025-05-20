@@ -5,7 +5,7 @@ bs_br = import_file('1) data/3_bs_br_data.csv',char_vars =  c('firmid')) %>%
 if(dummy_version){ bs_br[,NACE_BR := first(NACE_BR), by = firmid]}
   
 age_data = import_file(file.path(inputs_dir, '16a_firm_lvl_birth_data.parquet'),
-                       col_select = c('birth_year', 'first_export_year', 'firmid'))  
+                       col_select = c('birth_year', 'first_export_year', 'firmid', 'last_observed'))  
 ctry_lvl_age_data = import_file(file.path(inputs_dir, '16b_firm_ctry_lvl_birth_data.parquet'))
 linkedin_ctry_lvl = import_file(linkedin_ctry_lvl_path)
 linkedin_firm_lvl = import_file(linkedin_basic_path)
@@ -69,6 +69,7 @@ output = bs_br %>%
   variance_metrics(time_id = 'year', group_id = 'NACE_BR', ind_id = 'firmid',
                  int_id = 'dom_turnover',  birth_id = 'birth_year', logged_version = T, prefix = 'nace_',
                  full_dataset = T) %>% 
+  calc_churn_rates(., 'NACE_BR', 'birth_year', 'last_observed', 'year', 'nace') %>% 
   ##log variables
   .[,paste0('log_',vars_to_log) := lapply(.SD,asinh), .SDcols = vars_to_log]
 

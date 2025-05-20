@@ -11,6 +11,7 @@ source('2) code/00_helper_functions.R')
   dummy_version = grepl('amagnuson', getwd());
   running_regressions = !grepl('amagnuson', getwd());
   enforce_pauses = grepl('amagnuson', getwd())
+  cleaning_admin = F
   make_randomized = F #grepl('amagnuson', getwd());
   
   make_linkedin_vars_complete = T; make_birth_data = T; make_firm_yr = T; 
@@ -46,6 +47,7 @@ age_header =gpaste("&",gpaste('\\multicolumn{4}{c}{',
                               collapse_str = "& &"),'\\\\')
 
 ### Generate Project Specific Helper Functions
+
 variance_metrics = function(df,subset_id = NA, remove_NA_subset = T, 
                             time_id, group_id, ind_id, int_id, birth_id,
                             logged_version = T,prefix = "", full_dataset = T){
@@ -80,7 +82,8 @@ variance_metrics = function(df,subset_id = NA, remove_NA_subset = T,
       .[, .(de_trended_variance_group_lvl = sub_regression(int_var, time_var, asr = T),
             variance_group_lvl = var(int_var)), by = .(group_var)]
     
-    temp = merge(churn, variance_1, all = T) %>% merge(variance_2, all = T) %>%
+    temp = merge(churn, variance_1, all = T) %>% merge(variance_2, all = T) %>% 
+      select(-c(entrance_rate, churn_rate, exit_rate)) %>% 
       rename_with(.cols = -c(group_var, time_var), ~(paste0(prefix,.))) %>% 
       rename(!!group_id := group_var, !!time_id := time_var)
     if(logged_version) names(temp) = gsub('variance', 'log_variance', names(temp))
@@ -91,6 +94,13 @@ variance_metrics = function(df,subset_id = NA, remove_NA_subset = T,
   
 }
 
+calc_churn_rates = function(df, group_var, birth_var, death_var, time_var, prefix){
+  df[, (paste0(prefix, "_entrance_rate")) := as.numeric(NA_mean(get(time_var) == get(birth_var))),   by = c(group_var, time_var)] %>%
+    .[, (paste0(prefix, "_exit_rate"))     := as.numeric(NA_mean(get(time_var) == get(death_var))),  by = c(group_var, time_var)] %>% 
+    .[,(paste0(prefix, "_churn_rate")) := as.numeric(0.5 * (get(paste0(prefix, "_entrance_rate")) + get(paste0(prefix, "_exit_rate"))))] %>%
+    
+  return(df)
+}
 
 ## PRESERVE INITIAL STATE OF AFFAIRS 
 base_env = c(ls(),'base_env')

@@ -20,10 +20,13 @@ base_env = c(ls(),'base_env')
 # make the admin birth data -----------------------------------------------
 
 admin_birth_data = import_file('../../IWH/data/2_patent_tm_scraping/1_raw/1_StockUniteLegaleHistorique_utf8.csv', char_vars = 'siren',
-               col_select = c("siren", "dateDebut", "etatAdministratifUniteLegale")) %>%
- .[, `:=`(start_year = year(dateDebut), firmid = siren)] %>%
- .[etatAdministratifUniteLegale != 'C' & !is.na(start_year) & start_year <= 2024 & start_year > 1901]  %>%
- .[, .(birth_year_admin = min(start_year)), by = firmid]
+  col_select = c("siren", "dateDebut", 'dateFin', "etatAdministratifUniteLegale")) %>%
+  remove_if_NA('siren', 'dateDebut','etatAdministratifUniteLegale') %>% 
+ .[, `:=`(start_year = year(dateDebut),end_year = year(dateFin), firmid = siren)] %>%
+ .[etatAdministratifUniteLegale != 'C' & !is.na(start_year) & start_year <= 2024 & start_year > 1901] %>%
+ .[,last_start := max(dateDebut) == dateDebut, by = firmid] %>% 
+ .[, .(birth_year_admin = min(start_year), last_observed_admin = NA_max(end_year[last_start])), by = firmid] %>% 
+ .[last_observed_admin == NA_max(last_observed_admin), last_observed_admin := NA]
 write_parquet(admin_birth_data, '1) data/14_admin_birth_data.parquet')
 # make the nace code database ----------------------------------------------------------------------
  nace_code <- import_file("https://gist.githubusercontent.com/b-rodrigues/4218d6daa8275acce80ebef6377953fe/raw/99bb5bc547670f38569c2990d2acada65bb744b3/nace_rev2.csv") %>%

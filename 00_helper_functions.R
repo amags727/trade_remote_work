@@ -881,7 +881,7 @@ NA_mode = function(x){
   ifelse(all_NA(x), corect_NA_type(x), Mode(x))
 }
 NA_mean = function(x){
-  ifelse(all_NA(x), corect_NA_type(x), mean(x,na.rm = T))
+  ifelse(all_NA(x),NaN, mean(x,na.rm = T))
 }
 NA_median = function(x){
   ifelse(all_NA(x), corect_NA_type(x), median(x,na.rm = T))
