@@ -69,6 +69,10 @@ for n=1:maxit
     
     
     %CARRY OUT THE UPWIND 
+    % NB our upwind procedure flips the procedure from the example code,
+    % this is because our value function is generally convex, not concave
+    % (a result of higher values of the state being worse, instead of
+    % better) 
     Ham_f = A_tilde*pi_bar - w*L_f + drift_f .* dV_f;
     Ham_b = A_tilde*pi_bar - w*L_b + drift_b .* dV_b;
     
