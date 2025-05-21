@@ -35,7 +35,7 @@ mid_I = ceil(I/2);
 A_bar = Sigma_ub / Sigma_importance +  sigma_a^2 + .5*Sigma_ub;
 A_tilde = A_bar - sigma_a^2 - Sigma;
 
-chi_bar = -Sigma.^2*phi_d*alpha_1.*(A_tilde*x_bar).^alpha_2; %component of chi not a function of v'
+xi_bar = -Sigma.^2*phi_d*alpha_1.*(A_tilde*x_bar).^alpha_2; %component of xi not a function of v'
 c_drift = -2*theta.*Sigma + sqrt_Q.^2; % component of drift not a function of L 
 
 % L needed to make drift equal zero; note for firms with very low precision
@@ -61,8 +61,8 @@ for n=1:maxit
     
     % construct optimal L 
     % (we constrain it to be positive so if dV <0 we set it to zero)
-    L_f = (w./(chi_bar.*dV_f)).^(1/(alpha_1 -1)).*(dV_f<0);
-    L_b = (w./(chi_bar.*dV_b)).^(1/(alpha_1 -1)).*(dV_b<0);
+    L_f = (w./(xi_bar.*dV_f)).^(1/(alpha_1 -1)).*(dV_f<0);
+    L_b = (w./(xi_bar.*dV_b)).^(1/(alpha_1 -1)).*(dV_b<0);
     
     drift_b = c_drift - Sigma.^2.*(phi_d * L_b.^alpha_1 .* (A_tilde*x_bar).^alpha_2 + sigma_a^-2);
     drift_f = c_drift - Sigma.^2.*(phi_d * L_f.^alpha_1 .* (A_tilde*x_bar).^alpha_2 + sigma_a^-2);
