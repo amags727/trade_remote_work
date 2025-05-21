@@ -24,7 +24,7 @@ maxit = 500;
 
 % Define the state space 
 I = 20;
-Sigma_ub = sqrt_Q^2 /(2*theta);
+Sigma_ub = sqrt_Q^2 /(2*theta); % Sigma_ub is the value such that drift = 0 when the firm doesn't participate in market 
 Sigma_lb = 1e-2;
 Sigma = linspace(Sigma_lb,Sigma_ub, I)';
 d_Sigma = Sigma(2) - Sigma(1);
