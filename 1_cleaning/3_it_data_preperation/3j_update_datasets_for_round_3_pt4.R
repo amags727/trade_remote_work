@@ -6,7 +6,7 @@ rm(list = ls());
   library(dplyr)
   root = case_when(
     ## AZM running locally and not testing if it will work CASD 
-    grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work",
+    grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/Big Data Code",
     
     ## update as makes sense for CASD / your own use 
     T ~ "idk ")
@@ -32,26 +32,35 @@ file_name = file.path(inputs_dir, '16d_firm_ctry_yr_lvl.parquet')
 
 base = import_file(file_name) %>%
   calc_churn_rates(., 'ctry', 'streak_start', 'last_year_of_streak', 'year', 'mkt') %>%
-  calc_churn_rates(., c('ctry','NACE_BR'), 'streak_start', 'last_year_of_streak', 'year', 'nace_mkt')
+  calc_churn_rates(., c('ctry','NACE_BR'), 'streak_start', 'last_year_of_streak', 'year', 'nace_mkt') %>% 
+  select(-con_fil(.,'extended'))
 
-## add (extended) gravity 
+## add gravity
 similiarity_data = import_file ('1) data/similarity_matrices/outputs/similiarity_data.rds')
 grav_cats =  c('region', 'border', 'language')
-base[,(paste0('extended_grav_', grav_cats)) := F]
-for (i in 1:nrow(similiarity_data)){
-  mkt =  similiarity_data$ctry[i]
-  for (x in grav_cats) assign(gpaste(x, '_list'), setdiff(similiarity_data[[paste0('share_',x)]][i][[1]],mkt))
-  
-  if (mkt == 'FR'){
-    base[,(paste0('grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"), function(x) ctry %in% get(x))]
-  }else{
-    base[ctry == mkt,
-         (paste0('extended_grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"),
-         function(x) any(ctry %in% get(x))), by = .(firmid,year)]
-  }
-}
-base[, (paste0('either_grav_', grav_cats)) := lapply(grav_cats, function(x) get(paste0('grav_', x)) | get(paste0('extended_grav_', x)))] 
+i = which(similiarity_data$ctry == 'FR')
+for (x in grav_cats) assign(gpaste(x, '_list'), similiarity_data[[paste0('share_',x)]][i][[1]])
+base[,(paste0('grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"), function(x) ctry %in% get(x))]
 
+## add extended gravity
+extended_grav_data = rbindlist(lapply(1:nrow(similiarity_data), function(i){
+  
+  ## retrieve the list of countries that fulfill gravity reqs for a particular market 
+  mkt =  similiarity_data$ctry[i]
+  for (x in grav_cats) assign(gpaste(x, '_list'), setdiff(similiarity_data[[paste0('share_',x)]][i][[1]],mkt ))
+  
+  ##  subset to the firms operating in the mkt of interest in a given year 
+  temp = base[, in_mkt := any(ctry == mkt), by = .(firmid,year)][in_mkt == T] %>% 
+    
+    # check to see if they have a market that fulfills each criteria 
+    .[, setNames(lapply(paste0(grav_cats, "_list"),
+     function(x) any(ctry %in% get(x))), paste0('extended_grav_', grav_cats)),
+     by = .(firmid,year)] %>% 
+    .[, ctry := mkt]}))
+base = merge(base, extended_grav_data, all.x = T, by = c('firmid', 'ctry', 'year')) %>% 
+  .[, (paste0('either_grav_', grav_cats)) :=
+      lapply(grav_cats, function(x) get(paste0('grav_', x)) | get(paste0('extended_grav_', x)))] 
+rm(extended_grav_data); gc()
 
 
 write_parquet(base, file_name)

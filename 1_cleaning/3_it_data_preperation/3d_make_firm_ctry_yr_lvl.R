@@ -6,7 +6,7 @@ rm(list = ls());
   library(dplyr)
   root = case_when(
     ## AZM running locally and not testing if it will work CASD 
-    grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work",
+    grepl("/Users/amagnuson",getwd()) & !grepl('4) exports-imports',getwd()) ~ "/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/Big Data Code",
     
     ## update as makes sense for CASD / your own use 
     T ~ "idk ")
@@ -54,23 +54,27 @@ source('2) code/0_set_parameter_values.R')
   french_distances = fread('1) data/similarity_matrices/outputs/france_distance_data.csv') 
 # merge and clean  -----------------------------------------------------------
 
-## add (extended) gravity 
+## add  gravity 
 grav_cats =  c('region', 'border', 'language')
-export_data[,(paste0('extended_grav_', grav_cats)) := F]
-for (i in 1:nrow(similiarity_data)){
- mkt =  similiarity_data$ctry[i]
- for (x in grav_cats) assign(gpaste(x, '_list'), setdiff(similiarity_data[[paste0('share_',x)]][i][[1]],mkt))
+i = which(similiarity_data$ctry == 'FR')
+for (x in grav_cats) assign(gpaste(x, '_list'), similiarity_data[[paste0('share_',x)]][i][[1]])
+export_data[,(paste0('grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"), function(x) ctry %in% get(x))]
 
- if (mkt == 'FR'){
-   export_data[,(paste0('grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"), function(x) ctry %in% get(x))]
- }else{
- export_data[ctry == mkt,
-             (paste0('extended_grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"),
-             function(x) any(ctry %in% get(x))), by = .(firmid,year)]
- }
-}
-export_data[, (paste0('either_grav_', grav_cats)) := lapply(grav_cats, function(x) get(paste0('grav_', x)) | get(paste0('extended_grav_', x)))] 
-
+## add extended gravity
+extended_grav_data = rbindlist(lapply(1:nrow(similiarity_data), function(i){
+  mkt =  similiarity_data$ctry[i]
+  for (x in grav_cats) assign(gpaste(x, '_list'), setdiff(similiarity_data[[paste0('share_',x)]][i][[1]],mkt ))
+  temp = export_data[, in_mkt := any(ctry == mkt), by = .(firmid,year)][in_mkt == T] %>% 
+    .[, setNames(lapply(paste0(grav_cats, "_list"),
+                        function(x) any(ctry %in% get(x))), paste0('extended_grav_', grav_cats)),
+      by = .(firmid,year)] %>% 
+    .[, ctry := mkt]
+}))
+export_data = merge(export_data, extended_grav_data, all.x = T, by = c('firmid', 'ctry', 'year')) %>% 
+  .[, (paste0('either_grav_', grav_cats)) := lapply(grav_cats,
+  function(x) get(paste0('grav_', x)) | get(paste0('extended_grav_', x)))] 
+rm(extended_grav_data); gc()
+  
 output = export_data %>% 
   # add num markets
   .[, num_markets := .N, by = .(firmid, year)] %>% 
