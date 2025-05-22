@@ -19,7 +19,7 @@ source('2) code/0_set_parameter_values.R')
 death_data = import_file(file.path(inputs_dir, '16a_firm_lvl_birth_data.parquet'),
                          char_vars = 'firmid', col_select = c('firmid', 'last_observed'))
 file_name = file.path(inputs_dir, '16c_firm_yr_lvl.parquet')
-base = import_file(file_name) %>% select(-last_observed) %>% merge(death_data, by = c('firmid')) %>% 
+base = import_file(file_name) %>% merge(death_data, by = c('firmid')) %>% 
   calc_churn_rates(., 'NACE_BR', 'birth_year', 'last_observed', 'year', 'nace')
 write_parquet(base, file_name)
 
