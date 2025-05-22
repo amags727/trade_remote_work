@@ -216,8 +216,8 @@ comp_coef_names = function(original, new){
 
 
 # format table  -----------------------------------------------------------
-format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_names = NA, column_names = NA,
-                        custom_rows =NA, custom_row_placement = NA,  
+format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_names = NA, collapse_coef_names = T,
+                        column_names = NA, custom_rows =NA, custom_row_placement = NA,  
                         headers = NA, divisions_before = NA, notes = NA,
                         note_width = .5, output_path = NA, caption = NULL, rescale_factor = NA, spacer_size = NA,
                         coef_order = NA, cox = F,make_pdf= T,make_tex = T, final_commands = NA_character_){
@@ -260,7 +260,8 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
     if(!all(is.na(coef_names))){ coef_names = data.frame(actual = actual, in_table = coef_names) 
     }else{ coef_names = data.frame(actual = actual, in_table = actual)}
     unique_table_names = unique(coef_names$in_table)
-    output_matrix = matrix(data = '', nrow = 2*length(unique_table_names), ncol = length(model_inputs))
+    output_matrix = matrix(data = '', nrow = 2*ifelse(collapse_coef_names, length(unique_table_names), nrow(coef_names)),
+                           ncol = length(model_inputs))
     
     for (i in 1:length(model_inputs)){
       if(cox){
@@ -279,14 +280,22 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
       temp_model$coef_name = rownames(temp_model)
       
       for(j in 1:nrow(temp_model)){
-        temp_row =  coef_names %>% filter(actual ==temp_model$coef_name[j]) %>% pull(in_table) %>% .[1] 
-        temp_row  = which(unique_table_names == temp_row)*2
+        if(collapse_coef_names){
+          temp_row =  coef_names %>% filter(actual ==temp_model$coef_name[j]) %>% pull(in_table) %>% .[1] 
+          temp_row  = which(unique_table_names == temp_row)*2
+        }else{
+          temp_row = which(coef_names$actual == temp_model$coef_name[j])*2
+        }
         output_matrix[c(temp_row -1, temp_row),i] = c(temp_model$coef_display[j], temp_model$se_display[j])
       }
     }
+    if(collapse_coef_names){ var_names = unique_table_names}else{var_names = coef_names$in_table} 
+    var_names = unlist(lapply(var_names, function(x) c(x, "")))
+    
+    
     
     output_matrix = rbind(c("",gpaste("(", 1:length(model_inputs), ")")),
-                          cbind(as.vector(rbind(unique_table_names, "")), output_matrix),
+                          cbind(as.vector(var_names), output_matrix),
                           c("Num. Obs",lapply(model_inputs,function(model){
                             ifelse(cox,as.character(model$n), as.character(model$nobs))}) %>% unlist()))
     
