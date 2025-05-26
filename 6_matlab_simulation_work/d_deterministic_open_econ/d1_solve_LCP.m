@@ -2,7 +2,7 @@ clear all; close all; clc;
 addpath(genpath('../b_helper_functions'))
 
 % base parameters
-I = 3;
+I = 20;
 num_mkts = 2;
 
 % production parameters
@@ -34,7 +34,7 @@ D =  diag(repmat(-.9,1,num_mkts)); % mean reversion parameter term
 rho = 0.05; %discount rate
 Delta = 1000; % 1/Delta = time_step
 crit = 10^(-6);
-maxit = 50;
+maxit = 500;
 
 % Construct the state space
 Sigma_ub = fake_layp(D, Q); % sets drift of Sigma to zero when we're in no markets
@@ -141,10 +141,10 @@ dim = struct('len_Sigma',len_Sigma,'num_mkts', num_mkts, 'num_networks', num_net
     , 'num_state_vars', num_state_vars, 'I', I, 'd_Sigma', d_Sigma, ...
     'index_matrix', index_matrix);
 
-% set first guess for v --> earning profits of given state forever wo
-% worrying about data
-v_0 = ham_base ./ rho;
-v = v_0;
+% set first guess for v --> earning profits of base state without worrying
+% about data
+v_0 = repmat(ham_base(len_Sigma,:),len_Sigma,1) ./ rho;
+v = v_0; 
 for n=1:maxit
     disp(n)
     V = v;
@@ -214,16 +214,17 @@ for n=1:maxit
     Ham_b = permute(repmat(Ham_b,[ones(1, 2), num_state_vars]), [1,3,2]);
     Ib(~I_final) = Ham_b(~I_final) >= Ham_f(~I_final);
     If(~I_final) = Ham_f(~I_final) >  Ham_b(~I_final);
-    
+
     dv_upwind = Ib.*dv_b + If.*dv_f;
     L = d1_L_optimal(dv_upwind, dim,Sigma_comp_optimal_L,xi, alpha_1);
     pi = ham_base  - squeeze(sum(L.*w, 2));
+    drift = d1_drift_calc(L.^alpha_1, constant_drift_component, partially_constant_drift, dim);
 
     % Solve the LCP Problem
-    A_matrix = d1_construct_A_matrix(drift_f, drift_b,dim);
+    A_matrix = d1_construct_A_matrix(drift,dim);
     B = (rho + 1/Delta)*speye(len_Sigma.*num_networks) - A_matrix;
     
-    doing_LCP = 0;
+    doing_LCP = true;
     if ~doing_LCP
         b = reshape(pi + V./Delta, [],1);
         V = reshape(B\b, [], num_networks);
@@ -253,13 +254,11 @@ for n=1:maxit
         V= reshape(z+ vstar_stacked, [], num_networks);
     end
 
-    
    dist(n) = max(max(abs(V - v)));
-   fprintf('change = %d\n', max(abs(V - v)))
+   fprintf('change = %d\n', max(abs(V-v)))
     v = V;
     if dist(n)<crit
         fprintf('Value Function Converged, Iteration = %d\n', n);
         break
     end
 end
-

@@ -1,4 +1,4 @@
-function A_block = d1_construct_A_matrix(drift_f, drift_b, dim)
+function A_block = d1_construct_A_matrix(drift, dim)
 % Constructs sparse transition matrices per network using upwind logic,
 % correctly accumulating diagonal entries and handling boundary contributions.
 
@@ -24,10 +24,10 @@ parfor network = 1:dim.num_networks
         valid_bwd = mod(base_idx - 1, block_size) >= stride;
 
         % Compute components
-        X = -min(drift_b(:,state_num,network), 0) / dim.d_Sigma(state_num);
-        Z =  max(drift_f(:,state_num,network), 0) / dim.d_Sigma(state_num);
-        Y = -max(drift_f(:,state_num,network), 0) / dim.d_Sigma(state_num) + ...
-            min(drift_b(:,state_num,network), 0) / dim.d_Sigma(state_num);
+        X = -min(drift(:,state_num,network), 0) / dim.d_Sigma(state_num);
+        Z =  max(drift(:,state_num,network), 0) / dim.d_Sigma(state_num);
+        Y = -max(drift(:,state_num,network), 0) / dim.d_Sigma(state_num) + ...
+            min(drift(:,state_num,network), 0) / dim.d_Sigma(state_num);
 
         % Add reflected components to the diagonal where fwd/bwd is invalid
         Y = Y + (~valid_bwd) .* X + (~valid_fwd) .* Z;
