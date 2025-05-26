@@ -14,7 +14,7 @@ alpha_1 = .5; % cobb douglas coefficient on data labor
 alpha_2 = .5; % cobb douglas coefficient on raw data 
 sigma_a = 1.1; % sd of noise term 
 sqrt_Q = 1.1; % sd of random component of z
-theta = .9; % mean reversion parameter of z 
+theta = .9; % mean reversion parameter of z (closer to one faster mean reversion)
 
 % Simulation Parameters
 rho = 0.05; %discount rate
@@ -31,7 +31,6 @@ d_Sigma = Sigma(2) - Sigma(1);
 
 % Define Expected Quality (A_tilde) and related values 
 Sigma_importance = .66; 
-mid_I = ceil(I/2);
 A_bar = Sigma_ub / Sigma_importance +  sigma_a^2 + .5*Sigma_ub;
 A_tilde = A_bar - sigma_a^2 - Sigma;
 
@@ -79,8 +78,8 @@ for n=1:maxit
      Iboth = (drift_f<0).*(drift_b>0); % problematic case 
      I_zero_drift = (drift_b < 0) .*(drift_f>0); % steady state 
      Iunique = (drift_f<0).*(1-(drift_b>0)) + (1-(drift_f<0)).*(drift_b>0); % 
-     Ib = Iunique.*(drift_f<0) | Iboth.*(Ham_f>=Ham_b);
-     If = Iunique.*(drift_b>0) | Iboth.*(Ham_b>=Ham_f);
+     Ib = Iunique.*(drift_f<0) | Iboth.*(Ham_b>=Ham_f);
+     If = Iunique.*(drift_b>0) | Iboth.*(Ham_f>Ham_b);
     
     %make corrections at edge of domain 
     Ib(I) = 1; If(I) = 0;
