@@ -234,8 +234,7 @@ for n=1:maxit
         vstar = zeros(size(v)); best_alt = vstar;
         for network = 1:num_networks
             temp = v; temp(:,network) = -inf;
-            temp = temp - sum(max(0, networks - networks(network,:)).*ec,2)'...
-                - sum(max(0, networks(network,:)- networks).*01,2)';
+            temp = temp - sum(max(0, networks - networks(network,:)).*ec,2)';
             [vstar(:,network), best_alt(:,network)] = max(temp, [],2);
         end
         vstar_stacked = reshape(vstar, [], 1);
