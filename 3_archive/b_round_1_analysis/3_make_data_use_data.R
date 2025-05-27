@@ -50,7 +50,7 @@ eval(parse(text = command))
 write_parquet(bs_br_linkedin, file.path(inputs_dir, '16a_bs_br_linkedin.parquet'))
 rm(list= setdiff(ls(), base_env))
 }else{
-  import_file('/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/5) reduced_form_work/1) data/16_inputs_for_data_summary_stats/16a_bs_br_linkedin.parquet',
+  import_file('/Users/amagnuson/Library/CloudStorage/GoogleDrive-amagnuson@g.harvard.edu/My Drive/Grad School/8) all projects/Trade/Big Data/1) data/16_inputs_for_data_summary_stats/16a_bs_br_linkedin.parquet',
               char_vars = 'firmid') %>% write_parquet(file.path(inputs_dir, '16a_bs_br_linkedin.parquet')) 
 }
 
