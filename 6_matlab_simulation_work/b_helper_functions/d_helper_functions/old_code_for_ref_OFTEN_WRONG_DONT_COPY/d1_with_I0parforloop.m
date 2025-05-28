@@ -2,9 +2,9 @@ clear all; close all; clc;
 addpath(genpath('../b_helper_functions'))
 
 % base parameters
-I = 20;
-num_mkts = 2;
-doing_LCP =true;
+I = 4;
+num_mkts = 3;
+
 % production parameters
 w = 1;
 phi_g = 1; % goods productivity
@@ -12,7 +12,7 @@ gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
 x_bar = repmat(5,1, num_mkts);
 pi_bar = x_bar*w*phi_g^-1*(gamma-1)^-1; % base profits
-fc = 1; fc = [fc, repmat(fc*1.3,1,num_mkts-1)];
+fc = .5; fc = [fc, repmat(fc*1.5,1,num_mkts-1)];
 ec = fc*2;
 % data parameters
 phi_d = 1; % data productivity
@@ -32,8 +32,8 @@ D =  diag(repmat(-.9,1,num_mkts)); % mean reversion parameter term
 
 % Simulation Parameters
 rho = 0.05; %discount rate
-Delta = 1000; % 1/Delta = time_step
-crit = 10^(-3);
+Delta = 100; % 1/Delta = time_step
+crit = 10^(-6);
 maxit = 500;
 
 % Construct the state space
@@ -43,8 +43,7 @@ state_space_ub =  Sigma_ub(triu(true(size(Sigma_ub)), 0));
 vecs = arrayfun(@(x) linspace(Sigma_lb, x, I), state_space_ub, 'UniformOutput', false);
 [nvecs{1:numel(vecs)}] = ndgrid(vecs{:});
 Sigma = cell2mat(cellfun(@(x) x(:), nvecs, 'UniformOutput', false));
-networks = [1,0;1,1];
-%networks = dec2bin(0:(2^num_mkts - 1)) - '0';
+networks = dec2bin(0:(2^num_mkts - 1)) - '0';
 num_networks = size(networks,1);
 num_state_vars = size(Sigma,2);
 len_Sigma = size(Sigma,1);
@@ -145,8 +144,7 @@ dim = struct('len_Sigma',len_Sigma,'num_mkts', num_mkts, 'num_networks', num_net
 % set first guess for v --> earning profits of base state without worrying
 % about data
 v_0 = repmat(ham_base(len_Sigma,:),len_Sigma,1) ./ rho;
-v = v_0;
-
+v = v_0; 
 for n=1:maxit
     disp(n)
     V = v;
@@ -221,6 +219,35 @@ for n=1:maxit
     
     % generate values for L, profit, and drift 
     L = d1_L_optimal(dv_upwind, dim,Sigma_comp_optimal_L,xi, alpha_1);
+    % for intermediate cases set drift to zero
+    target_indices = find(max(I0, [], 2));
+    L_updates = zeros(length(target_indices), num_mkts);
+    parfor idx = 1:length(target_indices)
+        interest_index = target_indices(idx);
+        [Sigma_num, network] = ind2sub(size(v), interest_index);
+
+        needs_zero = I0(Sigma_num, :, network);
+        current_mkts = logical(networks(network, :));
+        c_ham = ham_base(Sigma_num, network);
+        L_init = L(Sigma_num, current_mkts, network);
+        c_dv = squeeze(dv_upwind(Sigma_num, :, network))';
+        c_Sigma = squeeze(Sigma_mat_version(Sigma_num,:,:));
+        c_A_tilde = A_tilde(Sigma_num, :);
+
+        L0 = optimize_L_input(L_init, c_dv, c_Sigma, needs_zero, ...
+            current_mkts, w, c_ham, alpha_1, alpha_2, ...
+            c_A_tilde, x_bar, sigma_a, rev_index_matrix, D, Q);
+
+        L_final = zeros(1, num_mkts);
+        L_final(current_mkts) = L0;
+
+        % Store the result
+        L_updates(idx, :) = L_final;
+    end
+    for idx = 1:length(target_indices)
+        [Sigma_num, network] = ind2sub(size(v), target_indices(idx));
+        L(Sigma_num, :, network) = L_updates(idx, :);
+    end
     pi = ham_base  - squeeze(sum(L.*w, 2));
     drift = d1_drift_calc(L.^alpha_1, constant_drift_component, partially_constant_drift, dim);
 
@@ -228,7 +255,7 @@ for n=1:maxit
     A_matrix = d1_construct_A_matrix(drift,dim);
     B = (rho + 1/Delta)*speye(len_Sigma.*num_networks) - A_matrix;
     
-
+    doing_LCP = true;
     if ~doing_LCP
         b = reshape(pi + V./Delta, [],1);
         V = reshape(B\b, [], num_networks);
@@ -258,32 +285,50 @@ for n=1:maxit
         V= reshape(z+ vstar_stacked, [], num_networks);
     end
    dist(n) = max(max(abs(V - v)));
-   fprintf('change = %d\n', max(max(abs(V-v))))
-   fprintf('num above cutoff = %d\n', size(find(abs(V - v) > crit),1))
-   v = V;
+   fprintf('change = %d\n', max(abs(V-v)))
+    v = V;
     if dist(n)<crit
         fprintf('Value Function Converged, Iteration = %d\n', n);
         break
     end
 end
 
-%% 
-z_mat = reshape(z,[],num_networks);
-preferred_network = repmat(1:num_networks, len_Sigma,1).*(reshape(z,[],num_networks)>0) +...
-                    best_alt.*(reshape(z,[],num_networks) ==0);
 
-time_periods = Delta*10;
-state = len_Sigma*ones(time_periods,1); arrival_network = ones(time_periods, 1);
-departure_network = arrival_network;
-L_over_time = zeros(time_periods, num_mkts);
-position = repmat(Sigma(len_Sigma, :), time_periods,1);
 
-for t = 1:(time_periods-1)
-    departure_network(t) =  preferred_network(state(t),arrival_network(t));
-    L_over_time(t,:) = L(state(t),:,  departure_network(t));
-    position(t+1,:) = position(t,:) + drift(state(t),:,departure_network(t))./Delta; 
-    [~,min_row] =  min(sqrt(sum((Sigma - position(t+1,:)).^2, 2))); state(t+1) = min_row;
-    arrival_network(t+1) = departure_network(t);
-end 
-%plot(1:time_periods, position(:,3))
-[min(preferred_network);max(preferred_network)]
+
+
+
+
+
+
+
+function L_opt = optimize_L_input(L_init, c_dv, c_Sigma, needs_zero, current_mkts, w,...
+                 c_ham, alpha_1,alpha_2, c_A_tilde, x_bar, sigma_a, rev_index_matrix,...
+                 D,Q)
+
+    % Objective function
+    function val = objective(L_input)
+        L_choice = zeros(1, length(current_mkts));
+        L_choice(current_mkts) = L_input;
+        Rinv = diag((L_choice.^alpha_1 .* (c_A_tilde .* x_bar).^alpha_2 + sigma_a.^-2) .* current_mkts);
+        c_drift = D * c_Sigma + c_Sigma * D + Q - c_Sigma * Rinv * c_Sigma;
+        c_drift_flat = c_drift(sub2ind(size(c_drift), rev_index_matrix(:,1), rev_index_matrix(:,2)));
+        val = - (sum(c_ham - L_choice .* w) + sum(c_drift_flat .* c_dv));
+    end
+
+    % Nonlinear equality constraint: drift must be zero at needs_zero
+    function [c, ceq] = constraint(L_input)
+        L_choice = zeros(1, length(current_mkts));
+        L_choice(current_mkts) = L_input;
+        Rinv = diag((L_choice.^alpha_1 .* (c_A_tilde .* x_bar).^alpha_2 + sigma_a.^-2) .* current_mkts);
+        c_drift = D * c_Sigma + c_Sigma * D + Q - c_Sigma * Rinv * c_Sigma;
+        c_drift_flat = c_drift(sub2ind(size(c_drift), rev_index_matrix(:,1), rev_index_matrix(:,2)));
+        ceq = c_drift_flat(needs_zero);
+        c = [];
+    end
+
+    % Optimization
+    opts = optimoptions('fmincon','Display','off','Algorithm','sqp');
+    L_opt = fmincon(@objective, L_init, [], [], [], [], ...
+                    zeros(size(L_init)), [], @constraint, opts);
+end

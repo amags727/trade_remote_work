@@ -1,10 +1,11 @@
 ## IMPORT PACKAGES AND HELPER FUNCTIONS 
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
-             'arrow', 'fixest', 'countrycode', 'survival', 'knitr', 'parallel')
+             'arrow', 'fixest', 'countrycode', 'survival', 'knitr', 'parallel','googledrive')
 lapply(packages, function(package){tryCatch({library(package,character.only = T)}, error = function(cond){
   install.packages(package); library(package, character.only = T)
 })})
+if (grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())) drive_auth(email = 'amagnuson@g.harvard.edu')
 source('2) code/00_helper_functions.R')
 
 ## SET ADMIN PARAMETER VALUES 
@@ -102,6 +103,13 @@ calc_churn_rates = function(df, group_var, birth_var, death_var, time_var, prefi
   return(df)
 }
 
+gen_coef_orders = function(coef_names, base){
+  output = lapply(1:length(coef_names), function(i){
+    unique(c(1, which(grepl('multi',coef_names[[i]])),
+             which(coef_names[[i]] %in% setdiff(interactions[[i]], base)),
+             which(coef_names[[i]] %in% intersect(interactions[[i]], base)),
+             1:length(coef_names[[i]])))})
+}
 ## PRESERVE INITIAL STATE OF AFFAIRS 
 base_env = c(ls(),'base_env')
 

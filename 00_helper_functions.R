@@ -470,15 +470,29 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   
   # output table to file 
   if (!is.na(output_path)){
-    if (make_tex) writeLines(table, output_path)
-    
+    if (make_tex){
+      if(!file.exists(output_path) | !grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
+        writeLines(table, output_path)
+      }else{
+        writeLines(table, 'temp.tex');
+        drive_update(output_path, 'temp.tex')
+        file.remove('temp.tex')
+      }
+    }
     if (make_pdf){
       latex_preamble <- "\\documentclass[11pt]{article}\\usepackage{adjustbox,amsmath,amsthm,amssymb,enumitem,graphicx,dsfont,mathrsfs,float,caption,multicol,ragged2e,xcolor,changepage,hyperref,printlen,wrapfig,stackengine, fancyhdr,pdflscape,parskip}\\hypersetup{colorlinks=true, linkcolor=blue, filecolor=magenta, urlcolor=blue,}\\usepackage[margin=1in]{geometry}\\usepackage[utf8]{inputenc}\\renewcommand{\\qedsymbol}{\\rule{0.5em}{0.5em}}\\def\\lp{\\left(}\\def\\rp{\\right)}\\DeclareMathOperator*{\\argmin}{arg\\,min}\\DeclareMathOperator*{\\argmax}{arg\\,max}\\def\\code#1{\\texttt{#1}}\\newcommand\\fnote[1]{\\captionsetup{font=small}\\caption*{#1}}\\usepackage[savepos]{zref}\\raggedcolumns\\RaggedRight\\makeatletter \\makeatother\\def\\bfseries{\\fontseries \\bfdefault \\selectfont\\boldmath}\\graphicspath{{./graphics/}}"
       cat(latex_preamble, '\\begin{document}', table, '\\end{document})',file = 'temp.tex')
       tinytex::latexmk("temp.tex")
+      pdf_path = gsub('tex', 'pdf', output_path)
       file.remove("temp.tex")
-      file.rename('temp.pdf', gsub('tex', 'pdf', output_path))
-    }}
+      if(file.exists(pdf_path) & grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
+        drive_update(pdf_path, 'temp.pdf')
+        file.remove('temp.pdf')
+      }else{
+      file.rename('temp.pdf', pdf_path)
+      }
+    }
+  }
   
   return(table)
 }
@@ -841,6 +855,19 @@ pretrend_graph = function(data, x_var, group_var, legend_placement = 'bottom',
                                  color = legend_name) + theme(legend.position = legend_placement)
   return(graph)}
 
+
+replace_in_files <- function(root_dir, pattern, replacement, file_pattern = "\\.R$") {
+  files <- list.files(path = root_dir, pattern = file_pattern, recursive = TRUE, full.names = TRUE)
+  
+  for (file in files) {
+    content <- readLines(file, warn = FALSE)
+    if (any(grepl(pattern, content, fixed = TRUE))) {
+      cat("Updating:", file, "\n")
+      updated <- gsub(pattern, replacement, content, fixed = TRUE)
+      writeLines(updated, file)
+    }
+  }
+}
 # na_var functions ------------------------------------------------------------------
 corect_NA_type = function(column) {
   col_class <- class(column)

@@ -43,7 +43,7 @@ format_table(
   divisions_before = c(6,11), 
   output_path = paste0(finished_output_dir,label,'.tex'),
   coef_names =c('total rev', 'capital', 'intangible\nassets', 'total\nemployment', 'firm age','worker\nprestige'),
-  caption = 'Firm Balance Sheet Characteristics by Age and Data Use Quartile', 
+  caption = 'Firm Balance Sheet Characteristics by Age and Data Use Quartile ', 
   make_tex = F)
 
 ## other compensation types 
@@ -192,22 +192,18 @@ for(name in names(base)){assign(name, base[[name]])}
 table_notes = ' Robust standard errors clustered at the firm level. All regressions include industry and year FE.'
 
 
-## block 3a domestic revenue 
+## block 3a-c domestic revenue 
 base = c(gpaste('log ', c('comp data', 'comp r\\&d', 'age')),  'avg worker\nprestige')
 block_names = paste0(3,letters[1:3])
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[2]] = model_indeces[[2]][-3]
 interactions = list(c('log employees', 'log capital'),
-                    gpaste('nace ', c('entrance', 'churn'), ' rate'),
+                    gpaste('nace ', c('entrance','exit' ,'churn'), ' rate'),
                     gpaste('nace ', c('avg firm',''), ' var.'))
 interactions = lapply(interactions, function(x) gpaste(c('','\\multicolumn{1}{r}{x '),x, order = 2:1) %>% str_replace_all(., "(multi.*)", "\\1}"))
 interactions[[3]] = con_fil(interactions[[3]], 'multi')
 coef_names = lapply(interactions, function(x) c(base, x))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-              which(coef_names[[i]] %in% interactions[[i]]),
-              1:length(coef_names[[i]])))})
-lapply(1:length(block_names), function(i){ format_table(
+coef_orders = gen_coef_orders(coef_names, base)
+output = lapply(1:length(block_names), function(i){ format_table(
   model_inputs =  model_output[model_indeces[[i]]],
   label = block_names[i],
   coef_names = coef_names[[i]],
@@ -219,19 +215,15 @@ lapply(1:length(block_names), function(i){ format_table(
   )})
 
 
-## block 3b export revenue 
+## block 3e-g export revenue 
 {
 base = append(base, 'log dom. rev', after = 1) 
 block_names = paste0(3, letters[5:7])
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[2]] = model_indeces[[2]][-3]
 interactions[[1]] = gpaste(c('','\\multicolumn{1}{r}{x '),c('log employees', 'log capital', 'log avg export mkt comp', 'log dom. rev'), order = 2:1) %>% 
   str_replace_all(., "(multi.*)", "\\1}")
 coef_names = lapply(interactions, function(x) unique(c(base, x)))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-           which(coef_names[[i]] %in% interactions[[i]]),
-           1:length(coef_names[[i]])))})
+coef_orders = gen_coef_orders(coef_names, base)
 lapply(1:length(block_names), function(i){ format_table(
   model_inputs =  model_output[model_indeces[[i]]],
   label = block_names[i],
@@ -244,19 +236,15 @@ lapply(1:length(block_names), function(i){ format_table(
 )})
 }
 
-## block 3c export entry 
+## block 3i-k export entry 
 {
 base = setdiff(base, 'log age')
 block_names = paste0(3, letters[9:11])
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[2]] = model_indeces[[2]][-3]
 interactions[[1]] =  gsub('avg dest. mkt comp', 'comp abroad', interactions[[1]])
 interactions[[2]] = con_fil(interactions[[2]], 'multi')
 coef_names = lapply(interactions, function(x) unique(c(base, x)))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-           which(coef_names[[i]] %in% interactions[[i]]),
-           1:length(coef_names[[i]])))})
+coef_orders = gen_coef_orders(coef_names, base)
 for (i in 1:length(block_names)){ format_table(
   model_inputs =  model_output[model_indeces[[i]]],
   label = block_names[i],
@@ -280,20 +268,16 @@ table_notes = ' Robust standard errors clustered at the firm level. All regressi
 ## export revenue 
 block_names = paste0(4,letters[1:3])
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[2]] = model_indeces[[2]][-3]
-model_indeces[[3]] = 15:19
 base = c(gpaste('log ', c('comp data', 'age', 'dom. rev', 'comp r\\&d')),  'avg worker\nprestige', 'within NACE mkt pop.', 'overall mkt pop.')
-interactions = list(c(gpaste('log ', c("other mkt export rev", 'dom. rev', 'num export markets', 'log in mkt comp.')), gpaste('first time ', c("in mkt", 'exporting'))),
+interactions = list(c(gpaste('log ', c("other mkt export rev", 'dom. rev', 'num export markets', 'in mkt comp.')), gpaste('first time ', c("in mkt", 'exporting'))),
                     c(gpaste('mkt ', c('entrance', 'immediate failure', 'churn'), ' rate'), gpaste('mkt ', c('avg firm',''), ' var.')),
-                    c('log dist. to France', 'log mkt size',  'overall mkt pop.', 'within NACE mkt pop.'))
-interaction_only_vars = c( gpaste('mkt ', c('avg firm',''), ' var.'))
+                    c('log dist. to France', 'log mkt size',  'overall mkt pop.', 'within NACE mkt pop.'
+                      , gpaste('grav.', c('region','language', 'border') )))
+interaction_only_vars = c( gpaste('mkt ', c('avg firm',''), ' var.'), gpaste('grav.', c('region','language', 'border')))
 interactions = lapply(interactions, function(x) gpaste(c('','\\multicolumn{1}{r}{x '),x, order = 2:1) %>% str_replace_all(., "(multi.*)", "\\1}") %>% setdiff(., interaction_only_vars))
 coef_names = lapply(interactions, function(x) unique(c(base, x)))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-           which(coef_names[[i]] %in% interactions[[i]]),
-           1:length(coef_names[[i]])))})
-lapply(1:length(block_names), function(i){ 
+coef_orders = gen_coef_orders(coef_names, base)
+lapply(c(1,3), function(i){ 
   table = format_table(
   model_inputs =  model_output[model_indeces[[i]]],
   label = block_names[i],
@@ -303,27 +287,20 @@ lapply(1:length(block_names), function(i){
   rescale_factor = 1,
   note_width = .5,
   output_path = paste0(finished_output_dir, block_names[i], '.tex'),
-  make_tex = F,
-  final_commands = ifelse(i == 3, 'table = table[-c(23:24)]', NA_character_))
+  make_tex = F)
   })
-
 
 ## exporter exit 
 base = setdiff(base, c('log age', 'within NACE mkt pop.', 'overall mkt pop.'))
 block_names = paste0(4,letters[5:7])
 interactions[[1]]  = append(interactions[[1]],'log mkt export rev' %>% c(., paste0('\\multicolumn{1}{r}{x', . ,'}')), 0)
-interactions[[2]] = setdiff(interactions[[2]], gpaste('mkt ', c('entrance', 'immediate failure', 'churn'), ' rate'))
+interactions[[2]] = setdiff(interactions[[2]], gpaste('mkt ', c('entrance','exit', 'immediate failure', 'churn'), ' rate'))
 interactions[[3]] = setdiff(interactions[[3]], c('log dist. to France', 'log mkt size',  'overall mkt pop.', 'within NACE mkt pop.'))
 
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[2]] = model_indeces[[2]][-3]
-model_indeces[[3]] = 39:43
 coef_names = lapply(interactions, function(x) unique(c(base, x)))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-           which(coef_names[[i]] %in% setdiff(interactions[[i]], 'log dom. rev')),
-           1:length(coef_names[[i]])))})
-lapply(1:length(block_names), function(i){ 
+coef_orders = gen_coef_orders(coef_names, base)
+lapply(c(1,3), function(i){ 
   table = format_table(
     model_inputs =  model_output[model_indeces[[i]]],
     label = block_names[i],
@@ -350,16 +327,12 @@ table_notes = paste0(' Robust standard errors clustered at the firm level.',
 base = c(gpaste('log ', c('comp data', 'dom. rev', 'comp r\\&d')),  'avg worker\nprestige', 'log age')
 block_names = paste0(5,letters[1:3],'.1')
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[2]] = model_indeces[[2]][-3]
 interactions = list(c('log employees', 'log capital', 'log dom. rev'),
-                    gpaste('nace ', c('entrance', 'churn'), ' rate'),
+                    gpaste('nace ', c('entrance','exit', 'churn'), ' rate'),
                     gpaste('nace ', c('avg firm',''), ' var.'))
 interactions = lapply(interactions, function(x) gpaste(c('','\\multicolumn{1}{r}{x '),x, order = 2:1) %>% str_replace_all(., "(multi.*)", "\\1}"))
 coef_names = lapply(interactions, function(x) unique(c(base, x)))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-           which(coef_names[[i]] %in% setdiff(interactions[[i]], 'log dom. rev')),
-           1:length(coef_names[[i]])))})
+coef_orders = gen_coef_orders(coef_names, base)
 lapply(1:length(block_names), function(i){ 
   format_table(
   model_inputs =  model_output[model_indeces[[i]]],
@@ -376,16 +349,12 @@ lapply(1:length(block_names), function(i){
 base = append(base, 'log total export rev.', after = 1)
 block_names = paste0(5,letters[4:6],'.1')
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[2]] = model_indeces[[2]][-3]
 base = append(base, 'log dom. rev', after = 1) 
 interactions[[1]] =  c('log total export rev.', 'log avg export mkt comp') %>% 
   gpaste(c('','\\multicolumn{1}{r}{x '),., order = 2:1) %>% str_replace_all(., "(multi.*)", "\\1}") %>% 
   append(interactions[[1]], .)
 coef_names = lapply(interactions, function(x) unique(c(base, x)))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-           which(coef_names[[i]] %in% setdiff(interactions[[i]], c('log dom. rev', 'log total export rev.'))),
-           1:length(coef_names[[i]])))})
+coef_orders = gen_coef_orders(coef_names, base)
 
 for (i in 1:length(interactions)){ format_table(
   model_inputs =  model_output[model_indeces[[i]]],
@@ -406,21 +375,18 @@ table_notes = ' Robust standard errors clustered at the firm level. All regressi
 ## export revenue 
 block_names = unique(variation_output$block)
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[2]] = model_indeces[[2]][-3]
-#model_indeces[[3]] = 15:19
 base = c(gpaste('log ', c('comp data', 'mkt export rev', 'dom. rev', 'age', 'comp r\\&d')),  'avg worker\nprestige','log years observed', 'within NACE mkt pop.', 'overall mkt pop.')
 interactions = list(c(gpaste('log ', c('mkt export rev',"other mkt export rev", 'dom. rev', 'num export markets', 'in mkt comp.')), gpaste('first time ', c("in mkt", 'exporting'))),
-                    c(gpaste('mkt ', c('entrance', 'immediate failure', 'churn'), ' rate'), gpaste('mkt ', c('avg firm',''), ' var.')),
+                    c(gpaste('mkt ', c('entrance','exit', 'immediate failure', 'churn'), ' rate'), gpaste('mkt ', c('avg firm',''), ' var.')),
                     c('log dist. to France', 'log mkt size',  'overall mkt pop.', 'within NACE mkt pop.',
                       gpaste('share ', c('region', 'language', 'border'))))
 interaction_only_vars =  c('mkt avg firm var.',  gpaste('share ', c('region', 'language', 'border')), 'log dist. to France')
-interactions = lapply(interactions, function(x) gpaste(c('','\\multicolumn{1}{r}{x '),x, order = 2:1) %>% str_replace_all(., "(multi.*)", "\\1}") %>% setdiff(., interaction_only_vars))
+interactions = lapply(interactions, function(x) gpaste(c('','\\multicolumn{1}{r}{x '),x, order = 2:1) %>%
+               str_replace_all(., "(multi.*)", "\\1}") %>% setdiff(., interaction_only_vars))
 coef_names = lapply(interactions, function(x) unique(c(base, x)))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-           which(coef_names[[i]] %in% setdiff(interactions[[i]], base)),
-           1:length(coef_names[[i]])))})
-for( i in 1:length(block_names)){ 
+coef_orders = gen_coef_orders(coef_names, base)
+
+for( i in c(1,3)){ 
   table = format_table(
     model_inputs =  model_output[model_indeces[[i]]],
     label = block_names[i],
@@ -442,24 +408,21 @@ table_notes = ' Robust standard errors clustered at the firm level. All regressi
 
 block_names = unique(variation_output$block)
 model_indeces = lapply(block_names, function(x) variation_output %>% filter(block == x) %>% pull(counter))
-model_indeces[[3]] = model_indeces[[3]][-3]
 base = c(gpaste('log ', c('comp data', 'dom. rev', 'comp r\\&d')),  'avg worker\nprestige') #,  'within NACE mkt pop.', 'overall mkt pop.')
 
 interactions = list(
   gpaste('log ', c('dom. rev', 'total empl', 'capital')),
-  c('not yet exporter', 'log otther export mkt rev','log num other export mkts', 'log comp in mkt'),
+  c('not yet exporter', 'log other export mkt rev','log num other export mkts', 'log comp in mkt'),
   c(gpaste('mkt ', c('entrance', 'immediate failure', 'churn'), ' rate'), gpaste('mkt ', c('avg firm',''), ' var.')),
-  c('log dist. to France', 'log mkt size',  'overall mkt pop.', 'within NACE mkt pop.'))
+  c('log dist. to France', 'log mkt size',  'overall mkt pop.', 'within NACE mkt pop.',
+    gpaste('share ', c('region', 'language', 'border'))))
 interaction_only_vars =  c('mkt avg firm var.',  gpaste('share ', c('region', 'language', 'border')), 'log dist. to France',
                            interactions[[3]], interactions[[4]])
 interactions = lapply(interactions, function(x) gpaste(c('','\\multicolumn{1}{r}{x '),x, order = 2:1) %>% str_replace_all(., "(multi.*)", "\\1}") %>% setdiff(., interaction_only_vars))
 coef_names = lapply(interactions, function(x) unique(c(base, x)))
-coef_orders = lapply(1:length(coef_names), function(i){
-  unique(c(1, which(grepl('multi',coef_names[[i]])),
-           which(coef_names[[i]] %in% setdiff(interactions[[i]], base)),
-           1:length(coef_names[[i]])))})
+coef_orders = gen_coef_orders(coef_names, base)
 block_names = gsub("3", "7",block_names)
-for( i in 1:length(block_names)){ 
+for( i in c(1:2, 4)){ 
   table = format_table(
     model_inputs =  model_output[model_indeces[[i]]],
     label = block_names[i],

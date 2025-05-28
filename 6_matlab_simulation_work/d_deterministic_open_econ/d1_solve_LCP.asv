@@ -2,9 +2,9 @@ clear all; close all; clc;
 addpath(genpath('../b_helper_functions'))
 
 % base parameters
-I = 20;
+I = 4;
 num_mkts = 2;
-doing_LCP =true;
+
 % production parameters
 w = 1;
 phi_g = 1; % goods productivity
@@ -43,8 +43,7 @@ state_space_ub =  Sigma_ub(triu(true(size(Sigma_ub)), 0));
 vecs = arrayfun(@(x) linspace(Sigma_lb, x, I), state_space_ub, 'UniformOutput', false);
 [nvecs{1:numel(vecs)}] = ndgrid(vecs{:});
 Sigma = cell2mat(cellfun(@(x) x(:), nvecs, 'UniformOutput', false));
-networks = [1,0;1,1];
-%networks = dec2bin(0:(2^num_mkts - 1)) - '0';
+networks = dec2bin(0:(2^num_mkts - 1)) - '0';
 num_networks = size(networks,1);
 num_state_vars = size(Sigma,2);
 len_Sigma = size(Sigma,1);
@@ -146,7 +145,7 @@ dim = struct('len_Sigma',len_Sigma,'num_mkts', num_mkts, 'num_networks', num_net
 % about data
 v_0 = repmat(ham_base(len_Sigma,:),len_Sigma,1) ./ rho;
 v = v_0;
-
+for doing_LCP = [false,true]
 for n=1:maxit
     disp(n)
     V = v;
@@ -265,6 +264,7 @@ for n=1:maxit
         fprintf('Value Function Converged, Iteration = %d\n', n);
         break
     end
+end
 end
 
 %% 
