@@ -28,7 +28,7 @@ source('2) code/00_helper_functions.R')
     linkedin_match_path = gsub('.par', '_dummy.par', linkedin_match_path)
   }
   
-  analysis_round = 3
+  analysis_round = 4
   output_base = paste0('3) output/',letters[analysis_round],"_round_",analysis_round,"_analysis/")
   suppressWarnings(dir.create(output_base))
   raw_output_dir = paste0(output_base,letters[analysis_round],"1_raw_output/")
