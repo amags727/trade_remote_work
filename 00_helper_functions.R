@@ -175,19 +175,22 @@ display_value = function(x, parens = F){
     return(out)
   }, character(1))
 }
-reshape_to_summary = function(base_data, int_vars, key_variable, eliminate_na = F){
+reshape_to_summary = function(base_data, int_vars, key_variable, eliminate_na = F, median = F){
   base_data = base_data[, key_var := get(key_variable)]
   if(eliminate_na) base_data = base_data[!is.na(key_var)]
-  hi= suppressWarnings(
-    base_data %>%
-      .[, c(setNames(lapply(.SD[, ..int_vars], NA_mean), int_vars),
-            setNames(lapply(.SD[, ..int_vars], NA_sd), paste0(int_vars, '_sd'))), by = key_var] %>% 
+  
+  if (median){
+    hi = suppressWarnings(base_data[, c(setNames(lapply(.SD[, ..int_vars], function(x) median(as.double(x), na.rm =T)), int_vars), setNames(lapply(.SD[, ..int_vars], NA_sd), paste0(int_vars, '_sd'))), by = key_var])
+  }else{
+    hi = suppressWarnings(base_data[, c(setNames(lapply(.SD[, ..int_vars], NA_mean), int_vars), setNames(lapply(.SD[, ..int_vars], NA_sd), paste0(int_vars, '_sd'))), by = key_var])
+  }
+  hi= hi %>% 
       select(key_var,gpaste(int_vars, c('', "_sd"))) %>%
       pivot_longer(cols = -key_var, names_to = 'var') %>%
       mutate(across(value, ~ifelse(grepl('sd',var), display_value(.,parens = T), display_value(.)))) %>%
       arrange(key_var) %>% 
       pivot_wider(id_cols = c(var), names_from = key_var, values_from = value) %>% 
-      mutate(var = ifelse(endsWith(var, 'sd'), '', var)))
+      mutate(var = ifelse(endsWith(var, 'sd'), '', var))
   return(hi)
 }
 
@@ -496,69 +499,80 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   
   return(table)
 }
-# dummy variable makers ---------------------------------------------------
-
-simulate_discrete_vars = function(data, data_dummy, group_vars, interest_vars){
-  if("group_code" %in% names(data)){
-    data = data %>% select(-group_code)
-  }
-  # use the group vars to generate unique ids fro each group
-  group_keys = data[, ..group_vars] %>% unique() %>% mutate(group_code = 1:nrow(.)) 
-  data = merge(data, group_keys, by = group_vars)
-  data_dummy = merge(data_dummy, group_keys, by = group_vars)
-  
-  # for each group use the joint empirical distribution of values to generate 
-  data_dummy = lapply(1:nrow(group_keys), function(i){
-    temp_dummy = data_dummy[group_code == i]; num_in_dummy = nrow(temp_dummy)
-    if (num_in_dummy > 0){
-      temp = data[group_code == i, ..interest_vars]; num_in_temp = nrow(temp);
-      temp_dummy = cbind(temp_dummy,temp[sample(1:num_in_temp, num_in_dummy, T)])
-    }
-    return(temp_dummy)
-  }) %>% rbindlist(fill =T, use.names = T)
-  data[, group_code := NULL]; data_dummy[, group_code := NULL]
-  return(data_dummy)
-}
-
-simulate_continuous_vars = function(data, data_dummy, group_vars, interest_vars){
-  if("group_code" %in% names(data)){
-    data = data %>% select(-group_code)
-  }
-  # use the group vars to generate unique ids fro each group
-  group_keys = data[, ..group_vars] %>% unique() %>% mutate(group_code = 1:nrow(.))
-  data = merge(data, group_keys, by = group_vars)
-  data_dummy = merge(data_dummy, group_keys, by = group_vars)
-  
-  # generate the mins and maxes for the whole dataset, these will serve as bounds
-  # for the simulation draws
-  mins = apply(data[,..interest_vars],2, NA_min); maxes = apply(data[,..interest_vars],2, NA_max)
-  
-  # for each group generate the multivariate normal distribution of the variables of interest 
-  data_dummy = lapply(1:nrow(group_keys), function(i){
-    temp_dummy = data_dummy[group_code == i]; num_in_dummy = nrow(temp_dummy)
-    if (num_in_dummy > 0){
-      temp_dummy = tryCatch({
-        temp = data[group_code == i, ..interest_vars] 
-        ## ensure covariance matrix is positive definite
-        noise = rnorm(nrow(temp)*length(interest_vars),0, 1e-6) %>% matrix(., nrow = nrow(temp))
-        noise = noise - min(noise);temp = temp+ noise
-        cov_matrix = cov(temp, use = 'pairwise.complete.obs') %>% nearPD()
-        cov_matrix = cov_matrix$mat
-        
-        # simulate data 
-        draws = rtmvnorm(num_in_dummy, colMeans(temp, na.rm = T),cov_matrix,mins,maxes)
-        temp_dummy[,(interest_vars) := as.data.table(draws)] 
-        return(temp_dummy)
-      }, error = function(e){return(temp_dummy)})
-    }
-    return(temp_dummy)
-  }) %>% rbindlist(fill =T, use.names = T)
-  
-  return(data_dummy)
-}
-
 
 # misc --------------------------------------------------------------------
+get_largest_polygon = function(geom){ 
+  parts = st_cast(geom, 'POLYGON')
+  areas = st_area(parts)
+  parts[which.max(areas)]}
+
+
+
+
+gen_dummy_dataset = function(base,subset_vars =NA, discrete_vars = NA, id_vars, rounding_vars = NA, dont_repeat_ids_within =NA){
+  
+  ## add dummies if necessary
+  if (all(is.na(subset_vars))){base$dummy = 1 ; subset_vars = 'dummy'}
+  if (all(is.na(dont_repeat_ids_within))){base$dummy_2 =1; dont_repeat_ids_within = 'dummy_2'}
+  
+  continuous_vars = setdiff(names(base), c(subset_vars, discrete_vars, id_vars, 'dummy', 'dummy_2'))
+  print(paste('continuous_vars are: ', paste(continuous_vars, collapse = ", ")))
+  subsets = base[,.(count = .N), by = subset_vars] %>% .[count >= 5] %>% .[, `:=`(subset_num = .I,count = NULL)]
+  base = merge(base, subsets, by = subset_vars)
+  mins = apply(base[,..continuous_vars],2, NA_min); maxes = apply(base[,..continuous_vars],2, NA_max)
+  full_discrete = unique(c(subset_vars, discrete_vars, id_vars))
+  
+  ## generate dummy versions of the id_vars 
+  for (id_var in id_vars){
+    original_type = typeof(base[[id_var]])
+    id_vec = unique(as.numeric(as.factor(base[[id_var]])))
+    base[!is.na(get(id_var)), (id_var) := sample(id_vec, .N, replace = T), by = dont_repeat_ids_within]
+    if (original_type == 'character'){
+      base[, (id_var) := as.character(get(id_var))]
+    }
+  }
+  
+  ## for each sub group generate dummy versions of remaining variables then put them all together 
+  base_dummy = rbindlist(lapply(1:nrow(subsets), function(i){
+    print(paste0(round(100*i / nrow(subsets),2), '%'))
+    ## sample from the joint empirical distribution for discrete vars
+    temp= base[subset_num == i] %>% .[,subset_num := NULL]
+    temp_discrete = temp[,..full_discrete] %>% .[sample(.N, .N, replace = F)] 
+    
+    ## assume continuous vars are distributed truncated normal and then sample 
+    if (length(continuous_vars)> 0){
+    temp_continuous = do.call(cbind,lapply(continuous_vars, function(var){
+      na_values = rep(NA, nrow(temp[is.na(get(var))]))
+      non_na_values = na.omit(temp[[var]])
+      if (length(na_values)< (nrow(temp)-1) & !is.na(sd(non_na_values))){
+        if(sd(non_na_values) != 0){
+          non_na_values = rtruncnorm(length(non_na_values), min(non_na_values),max(non_na_values), mean(non_na_values),sd(non_na_values))
+        }
+        output = data.table(var = c(na_values, non_na_values)) %>%  .[sample(.N, .N, replace = F)] 
+      }else{
+        output = data.table(var = na_values[1])
+      }
+      return(output %>% rename_with(~c(var)))}))
+    
+    output = cbind(temp_discrete, temp_continuous)}else{
+      output = temp_discrete
+    }
+  }))
+  if(!all_NA(rounding_vars)) base_dummy[, (rounding_vars) := lapply(rounding_vars, function(x) round(get(x)))]
+  print(paste('continuous_vars are: ', paste(continuous_vars, collapse = ", ")))
+  
+  distinct_vars = intersect(names(base_dummy), unique(c(id_vars,dont_repeat_ids_within)))
+  base_dummy = base_dummy %>% distinct(across(all_of(distinct_vars)), .keep_all = T) %>%
+    select(-intersect(names(.), c('dummy', 'dummy_2')))
+    
+  return(base_dummy)
+}
+
+
+within_group_filter = function(df, condition, group_var){
+  command = paste0('df[, temp :=', condition, ", by = ", group_var, '] %>% .[temp==T] %>% .[,temp:=NULL]')  
+  return(eval(parse(text = command)))
+}
 con_fil = function(vector,...,or = T, inc = T){
   if (typeof(vector) == 'list') vector = names(vector)
   strings = c(...)
@@ -570,7 +584,13 @@ con_fil = function(vector,...,or = T, inc = T){
       for(string in strings) output = output[grepl(string, output)]
     }
   }else{
+    if(or){
     output = setdiff(vector,  unique(unlist(lapply(strings, function(string){vector[grepl(string, vector)]}))))
+    }else{
+      output = vector 
+      for(string in strings) output = output[grepl(string, output)]
+      output = setdiff(vector, output)
+    }
   }
   return(output)
 }
@@ -658,7 +678,8 @@ gpaste <- function(..., order = NA, collapse_str = NA, no_expand = F) {
   return(output)
 }
 
-import_file <- function(filepath, col_select = NULL, data_table = T, char_vars = NULL, nrows = Inf){
+import_file <- function(..., col_select = NULL, data_table = T, char_vars = NULL, nrows = Inf){
+  filepath = paste0(...)
   import_csv = function(file, col_select = NULL, char_vars = NULL, nrows = Inf){
     if(!is.null(col_select)) col_select = paste0(", select = c('", paste(col_select, collapse = "','"), "')")
     if(!is.null(char_vars)) char_vars =  paste0(", colClasses = list(character=  c('", 
@@ -668,25 +689,26 @@ import_file <- function(filepath, col_select = NULL, data_table = T, char_vars =
   }
   
   import_parquet = function(file, col_select = NULL, data_table = T){
+    con = dbConnect(duckdb())
     if (!is.null(col_select)){
-      file = read_parquet(file, col_select = col_select)
+      file = as.data.table(dbGetQuery(con, paste0("SELECT ", paste(col_select, collapse = ", "), " FROM '",file, "'")))
     } else{
-      file = read_parquet(file)
+      file = as.data.table(dbGetQuery(con, paste0("SELECT * FROM '",file, "'")))
     }
-    
-    if (data_table) file = as.data.table(file)
+    dbDisconnect(con, shutdown=TRUE); gc()
     return(file)
   }
   
   if (grepl("\\.parquet$", filepath, ignore.case = TRUE)) {
-    file <- import_parquet(filepath, col_select = col_select, data_table = T) %>%
-      mutate(across(char_vars, ~as.character(.)))
+    file <- import_parquet(filepath, col_select = col_select, data_table = T) 
   } else if (grepl("\\.xlsx$|\\.xls$", filepath, ignore.case = TRUE)) {
     file <- read_excel(filepath) %>% as.data.table() 
   } else if (grepl("\\.csv$", filepath, ignore.case = TRUE)) {
     file <- import_csv(filepath, col_select = col_select, char_vars = char_vars, nrows = nrows)
   } else if (grepl("\\.rds$", filepath, ignore.case = TRUE)) {
     file <- readRDS(filepath)
+  } else if(grepl("\\.shp$", filepath, ignore.case = TRUE)){
+    file = st_read(filepath)
   } else {
     stop("Unsupported file type")
   }
@@ -868,6 +890,17 @@ replace_in_files <- function(root_dir, pattern, replacement, file_pattern = "\\.
     }
   }
 }
+
+zero_proof_ntiles = function(x, n){
+  zero_indeces = x == 0
+  temp = data.table(x =x[!zero_indeces]) %>% .[,ntile(x, n)]
+  output = rep(0, length(x))
+  output[!zero_indeces] = temp
+  return(output)
+}
+stratified_sample = function(df, strata, sample_size){
+  output = df[, .SD[sample(.N, max(1, floor(sample_size *.N)))], by = strata]
+}
 # na_var functions ------------------------------------------------------------------
 corect_NA_type = function(column) {
   col_class <- class(column)
@@ -920,7 +953,7 @@ NA_mean = function(x){
   ifelse(all_NA(x),NaN, mean(x,na.rm = T))
 }
 NA_median = function(x){
-  ifelse(all_NA(x), corect_NA_type(x), median(x,na.rm = T))
+  ifelse(all_NA(x), NaN, median(x,na.rm = T))
 }
 NA_sd = function(x){
   ifelse(all_NA(x), corect_NA_type(x), sd(x,na.rm = T))
