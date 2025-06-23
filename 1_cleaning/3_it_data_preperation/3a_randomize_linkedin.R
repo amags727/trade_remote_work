@@ -1,5 +1,5 @@
-
-matching_output = import_file(linkedin_match_path) %>% 
+remove_dummy = function(string){return(gsub('_dummy', '', string))}
+matching_output = import_file(remove_dummy(linkedin_match_path)) %>% 
   mutate(firmid_new =  as.character(sample(seq_len(nrow(.)), size = nrow(.), replace = FALSE)))
 
 for (file in c(linkedin_match_path,linkedin_ctry_lvl_path, linkedin_basic_path)){

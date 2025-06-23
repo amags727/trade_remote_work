@@ -7,3 +7,14 @@ linkedin_base_data = import_file(gsub("_dummy", "",linkedin_basic_path)) %>%
 
 write_parquet(linkedin_base_data,gsub("_dummy", "",linkedin_basic_path))
 
+library(ggplot2)
+
+# Generate data
+df <- data.frame(x = seq(0, 15, length.out = 100))
+df$y <-  .116* df$x - .0088* df$x^2
+
+# Plot
+ggplot(df, aes(x = x, y = y)) +
+  geom_line(color = "blue") +
+  labs(title = "Plot of -4.9x + 5.24x²", x = "x", y = "f(x)") +
+  theme_minimal()
