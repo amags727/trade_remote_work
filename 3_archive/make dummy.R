@@ -15,7 +15,7 @@ if (!file.exists('1) data/16_bs_br_linkedin.parquet')){
   }
   
   ## merge together
-  bs_br_linkedin = import_csv('1) data/3_bs_br_data.csv', char_vars =  c('firmid')) %>% 
+  bs_br_linkedin = import_csv('1) data/3_bs_br_data.parquet', char_vars =  c('firmid')) %>% 
     merge(linkedin, all.x = T)
   
   #### output both a real and dummy version 
