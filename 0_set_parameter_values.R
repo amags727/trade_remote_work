@@ -2,7 +2,7 @@
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
              'arrow', 'fixest', 'countrycode', 'survival', 'knitr', 'parallel', 'patchwork', 'scales', 'duckdb', 
-             'truncnorm','sf', 'rnaturalearth', 'geosphere')
+             'truncnorm','sf', 'rnaturalearth', 'geosphere', 'giscoR')
 lapply(packages, function(package){tryCatch({library(package,character.only = T)}, error = function(cond){
   install.packages(package); library(package, character.only = T)
 })})
@@ -11,7 +11,7 @@ source('2) code/00_helper_functions.R')
 
 
 # SET ADMIN PARAMETER VALUES  ---------------------------------------------
-  dummy_version = grepl('amagnuson', getwd());
+  dummy_version = getwd() != "C:/Users/Public/Documents/Big data Project";
   running_regressions = !grepl('amagnuson', getwd());
   enforce_pauses = grepl('amagnuson', getwd())
 
@@ -20,18 +20,16 @@ source('2) code/00_helper_functions.R')
   inputs_dir = ('1) data/16_inputs_for_data_summary_stats/')
   agg_data_dir = '1) data/17_industry_mkt_lvl_dta/'
   similiarity_dir = '1) data/0_misc_data/0c_similarity_matrices/'
-  linkedin_firm_yr_path = paste0('1) data/7_revelio_data/c_final_outputs/7c2_linkedin_firm_yr_lvl.parquet')
-  
-  
 
+  
   firm_yr_path = '1) data/10_firm_yr_lvl_dta.parquet'
-  firm_ctry_yr_path = paste0(inputs_dir, '16e_firm_yr_lvl.parquet')
-  firm_variance_path = paste0(inputs_dir, '16f_firm_lvl_collapsed_variance.parquet')
-  firm_variance_path = paste0(inputs_dir, '16g_firm_ctry_lvl_collapsed_variance.parquet')
-  summary_stats_path = paste0(inputs_dir, '16h_summary_stats.parquet')
-  for (path in c('summary_stats_path')){
-    assign(paste0(path, '_sample'), gsub('.par', '_sample.par', get(path)))
-  } 
+  linkedin_firm_path = '1) data/7_revelio_data/c_final_outputs/7c1_linkedin_firm_lvl.parquet'
+  linkedin_firm_yr_path = '1) data/7_revelio_data/c_final_outputs/7c2_linkedin_firm_yr_lvl.parquet'
+  paths = c('firm_yr_path', 'linkedin_firm_yr_path', 'linkedin_firm_path')
+  if (dummy_version){ 
+    for (path in paths){
+      assign(path, gsub('1) data', '1a) dummy data', get(path)))
+    }}
   
   
   analysis_round = 4
@@ -42,7 +40,15 @@ source('2) code/00_helper_functions.R')
   dummy_data_dir = ifelse(getwd() == 'C:/Users/Public/Documents/Big data Project',
                           paste0(output_base, letters[analysis_round], '3_dummy_data/'),
                           '1a) dummy data')
-  lapply(c(raw_output_dir, finished_output_dir, dummy_data_dir),function(x) suppressWarnings(dir.create(x)))
+  
+  paths = c('raw_output_dir', 'finished_output_dir')
+  if (dummy_version){ 
+    for (path in paths){
+      assign(path, gsub('3) output', '1a) dummy data/99_fake_output', get(path)))
+    }}
+
+  
+  lapply(c(raw_output_dir, finished_output_dir, dummy_data_dir),function(x) suppressWarnings(dir.create(x, recursive = T)))
   rm(output_base)
 
 # SET IMPORTANT PARAMETER VALUES  -----------------------------------------------------------------------
@@ -67,7 +73,11 @@ calc_churn_rates = function(df, group_var, birth_var, death_var, time_var, prefi
   return(df)
 }
 numeric_firmid = function(df){
+  if(getwd() == "C:/Users/Public/Documents/Big data Project"){
   merge(df, import_file('1) data/0_misc_data/0b_dictionaries/0b1_matched_firm_dict.parquet'), by = 'firmid') %>% select(-firmid)
+  }else{
+    df[, firmid_num := as.numeric(as.factor(firmid))] %>% .[,firmid := NULL]  
+  }
 }
 numeric_ctry = function(df){
   merge(df, import_file('1) data/0_misc_data/0b_dictionaries/0b2_ctry_dict.parquet', col_select = c('ctry', 'ctry_num')), by = 'ctry') %>% select(-ctry)

@@ -14,12 +14,7 @@ rm(list = ls());gc()
 }
 
 
-
 source('2) code/0_set_parameter_values.R')
-
-# set directory names  ----------------------------------------------------
-distrib_graph_dir = paste0(finished_output_dir, '1b_distribution_graphs/1b')
-
 # 1a generate summary stats  -------------------------------------------------------------------------
 firm_yr_w_unmatched = import_file('11_firm_yr_summary_stats_input.parquet')
 int_vars = c('comp_data', 'comp_total', 'share_empl_college', 'avg_prestige_total',
@@ -34,13 +29,13 @@ balance_sheet_input[,c(1,7,2:6)]
 label = '1a_balance_tests'
 format_table(summary_table_input = balance_sheet_input[,c(1,7,2:6)],
              label = label,
-             headers = "&&&&\\multicolumn{4}{c}{\\textbf{Within NACE Data Spend Quartile}}\\\\",
+             headers = "&&&&\\multicolumn{4}{c}{\\textbf{Data Spend Quartile}}\\\\",
              coef_names = coef_names, 
              divisions_before = 3,
              custom_rows = list('\\textbf{Linkedin Data}','\\textbf{Balance Sheet Data}', '\\textbf{Customs Data}'),
              custom_row_placement = c(8, 17,30),
              spacer_size = 1,
-             notes = '* value is contingent upon exporting.',
+             notes = '* value is contingent upon exporting. Quartiles at the industry year-level',
              note_width = 1,
              rescale_factor =  1,
              output_path = paste0(finished_output_dir, label, '.tex'), make_tex = F)
@@ -68,6 +63,45 @@ industry_summary = import_file(firm_yr_path) %>%
   merge(NACE_2d_info, all.x = T)})
 fwrite(industry_descriptives[[1]], paste0(raw_output_dir, '1b1_industry_summary_stats.csv'))
 fwrite(industry_descriptives[[2]], paste0(raw_output_dir, '1b2_industry_summary_stats_yr.csv'))
+
+
+
+# 1c intensive vs. extensive margin changes  ------------------------------
+linkedin_data = import_file(linkedin_firm_yr_path)
+changes = linkedin_data[empl_data_delta != 0] %>% 
+  .[,`:=`(extensive_margin = empl_data == 0 | empl_data_lag1 == 0,
+          share_comp_data_delta = share_comp_data_delta*100)]
+
+change_graphs = lapply(c('empl_data_delta', 'share_comp_data_delta'), function(var){
+  value_1 = round(quantile(changes[[var]], probs = 0.01, na.rm = TRUE)); 
+  value_99 = round(quantile(changes[[var]], probs = 0.99, na.rm = TRUE))
+  graph_input= changes[, delta := case_when(
+    get(var) < value_1 ~ value_1,
+    get(var) > 0 & get(var) <1 ~1,
+    get(var) < 0 &  get(var) >-1 ~-1,
+    get(var) > value_99 ~ value_99,
+    T ~ round(get(var)))] %>% 
+    .[,.(count = .N), by = .(extensive_margin, delta)] %>% 
+    .[, count := count / NA_sum(count)]
+  if(grepl('share',var)) graph_input[,delta := delta*1e-2]
+
+  graph = ggplot(graph_input, aes(x = delta, y = count, fill = extensive_margin)) + geom_col(position = 'stack') + 
+    theme_minimal() +  scale_y_continuous(labels = percent) +  labs(x = element_blank(), y = element_blank()) 
+  
+  if (grepl('share',var)){
+    graph = graph + scale_x_continuous(labels = percent) + labs(
+      subtitle = '% Change in Share of Payroll to Data',
+      fill = 'Extensive\nMargin')
+  }else{
+    graph = graph + labs(subtitle = "Change in Data Employees") + theme(legend.position = 'none')
+  }
+  return(graph)
+})
+change_graphs[[1]] + change_graphs[[2]]
+ggsave(paste0(finished_output_dir, '1c_change_distribution.png'),
+       change_graphs[[1]] + change_graphs[[2]],
+       height = 4, width = 8)
+
 
 
 # generate plots of data use  ---------------------------------------------

@@ -16,7 +16,7 @@ rm(list = ls());gc()
 ## import helper functions 
 source('2) code/0_set_parameter_values.R')
 
-#3_bs_br_data -------------------------------------------------------------------------
+# 3_bs_br_data -------------------------------------------------------------------------
 base = import_file('1) data/3_bs_br_data.parquet') %>% stratified_sample(., c('empl_bucket', 'NACE_BR', 'year'),.01)
 base_dummy = gen_dummy_dataset(base, 
                   subset_vars =  c('empl_bucket'),
@@ -27,7 +27,7 @@ base_dummy = gen_dummy_dataset(base,
 write_parquet(base_dummy, paste0(dummy_data_dir,'3_bs_br_data.parquet'))
 
 
-#4 ofats data -------------------------------------------------------------------------
+# 4 ofats data -------------------------------------------------------------------------
 file_path = '1) data/4_OFATS.parquet'
 base = import_file('1) data/4_OFATS.parquet') %>% .[,name := 'x'] %>% stratified_sample(., c('ctryofats', 'year'),.01)
 base_dummy = gen_dummy_dataset(base, 
@@ -68,34 +68,7 @@ rm(list= setdiff(ls(), c(base_env))); gc()
 
 
 
-# 7 revelio data  -----------------------------------------------------------
-dir.create(gsub('1) data/',dummy_data_dir,'1) data/7_revelio_data/c_final_outputs'), recursive = T)
-
-
-## firm level 
-file_path = '1) data/7_revelio_data/c_final_outputs/7c1_linkedin_firm_lvl.parquet'
-base = import_file(file_path)
-id_vars = con_fil(con_fil(base, 'company', 'extracted', 'hq', 'lei', 'rcid'), 'country', inc= F)
-discrete_vars = con_fil(base, id_vars, inc = F)
-base_dummy = gen_dummy_dataset(base, discrete_vars = discrete_vars,id_vars = id_vars)
-write_parquet(base_dummy, gsub('1) data/', dummy_data_dir, file_path))
-
-
-
-## firm yr level
-file_path = '1) data/7_revelio_data/c_final_outputs/7c2_linkedin_firm_yr_lvl.parquet'
-subset_vars = c('NACE_BR', 'year', 'use_data')
-base = import_file(file_path)  %>% stratified_sample(., subset_vars,.001)
-discrete_vars = c('use_data_lag1', 'use_data_lag2')
-base_dummy = gen_dummy_dataset(base, subset_vars, discrete_vars, id_vars = 'firmid_num',
-                               dont_repeat_ids_within = 'year')
-write_parquet(base_dummy, gsub('1) data/', dummy_data_dir, file_path))
-
-## cleanup 
-rm(list= setdiff(ls(), c(base_env))); gc()
 # 10/11 firm_yr data  ----------------------------------------------------------------------
-
-
 ## main firm yr 
 file_path = '1) data/10_firm_yr_lvl_dta.parquet'
 subset_vars = c('NACE_BR', 'use_data', 'year')

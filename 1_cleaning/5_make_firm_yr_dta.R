@@ -21,8 +21,8 @@ age_vars =  c('birth_year', gpaste('first_export_year_', c('customs', 'BS')),'la
 age_data = import_file('1) data/9_age_data/9b_firm_lvl_birth_data.parquet', col_select = age_vars)
 
 linkedin_vars = c('firmid_num', 'year', gpaste(c('empl', 'avg_prestige'),'_', c('total', 'data')), 'share_comp_data',
-                  gpaste(c('nace_comp_data_quartile', 'log_comp_total', 'log_comp_data', 'use_data'), c("", '_lag1', '_lag2')), 'NACE_BR',
-                  'share_data_empl_analyst','share_empl_college') %>% unique()
+                  gpaste(c('nace_comp_data_quartile', 'log_comp_total', 'log_comp_data', 'use_data'), c("", '_lag1')), 'NACE_BR',
+                  'share_data_empl_analyst','share_empl_college') %>% unique() %>% setdiff(., c('avg_prestige_data'))
 linkedin_firm_yr = import_file(linkedin_firm_yr_path, col_select = linkedin_vars) 
 
 bs_vars = c('firmid_num', 'year','dom_turnover', 'empl', 'capital', 'intangible_fixed_assets','for_turnover', 'labor_cost')
