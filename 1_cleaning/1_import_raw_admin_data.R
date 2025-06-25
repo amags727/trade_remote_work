@@ -74,7 +74,7 @@ bs_br_data[, empl_bucket := ifelse(empl < 10, "1-10",
 write_parquet(bs_br_firms,'1) data/0_misc_data/0b_dictionaries/0b1_matched_firm_dict.parquet')
 
 ## output the dataset
-write_parquet(bs_br_data %>% numeric_firmid(.), '1) data/3_bs_br_data.parquet')
+write_parquet(bs_br_data %>% numeric_firmid(.), raw_bs_br_path)
 
 
 ## import the OFATS data 
@@ -82,7 +82,7 @@ OFATS_output = lapply(2010:2020, function(yr){
   fread(paste0(raw_dir,'/ofats/ofats',yr,'.csv'),colClasses = list(character= 'firmid')) %>%
     mutate(year = yr)}) %>% rbindlist() 
 
-write_parquet(OFATS_output %>% numeric_firmid(.), '1) data/4_OFATS.parquet')
+write_parquet(OFATS_output %>% numeric_firmid(.), raw_ofats_path)
 rm(list= setdiff(ls(), base_env)); gc()
 
 
@@ -101,7 +101,7 @@ customs_data = import_file(file_path, char_vars = 'firmid') %>% numeric_firmid()
 }))  
 setorder(customs_dta_product_lvl,ctry, firmid_num, exim, year)
 
-customs_dta_product_lvl = import_file('1) data/5_customs_product_level.parquet') %>%
+customs_dta_product_lvl = import_file(raw_customs_product_lvl_path) %>%
   merge(import_file('1) data/0_misc_data/0b_dictionaries/0b2_ctry_dict.parquet'), by = 'ctry_num') %>%
   select(-ctry_num) %>% .[!ctry %in% not_current_countries]
   
@@ -111,18 +111,18 @@ customs_dta_product_lvl[,ctry_num := as.numeric(as.factor(ctry))]
 ctry_dict = unique(customs_dta_product_lvl[, .(ctry, ctry_num)]) %>% merge(import_file(similiarity_dir, 'inputs/iso_country_name.csv'))
 ctry_dict = rbind(data.frame(ctry = 'FR', ctry_num = 0, country_name = 'France'), ctry_dict)
 write_parquet(ctry_dict,'1) data/0_misc_data/0b_dictionaries/0b2_ctry_dict.parquet')
-write_parquet(customs_dta_product_lvl[,ctry := NULL],'1) data/5_customs_product_level.parquet')
+write_parquet(customs_dta_product_lvl[,ctry := NULL],raw_customs_product_lvl_path)
 rm(list= setdiff(ls(), base_env)); gc() 
 
 
 
 # 4) generate customs firm level data ----------------------------------------
-customs_dta_firm_lvl = import_file('1) data/5_customs_product_level.parquet') %>% 
+customs_dta_firm_lvl = import_file(raw_customs_product_lvl_path) %>% 
   .[,.(products = .N, value = sum(value)), by = c('firmid_num', 'year', 'exim', 'ctry_num')] %>%
   unbalanced_lag(., id_var = c('firmid_num', 'exim', 'ctry_num'), time_var = 'year', value_vars = 'value', lag_amounts = 1) %>% 
   .[,streak_id := cumsum(is.na(value_lag1))] %>% .[,value_lag1 := NULL]
 
-write_parquet(customs_dta_firm_lvl,'1) data/6_customs_firm_level.parquet')
+write_parquet(customs_dta_firm_lvl,raw_customs_firm_lvl_path)
 rm(list= setdiff(ls(), base_env)); gc()
 
 

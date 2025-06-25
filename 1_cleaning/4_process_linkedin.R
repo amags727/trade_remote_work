@@ -28,7 +28,7 @@ prestige_dta = import_file(paste0(linkedin_input_dir, 'matched_firm_user_prestig
   select(-highest_degree)
 uni_data = import_file(linkedin_input_dir, 'data_grads_across_france.parquet')
 
-# generate firm lvl linkedin data -----------------------------------------------------------------------
+# generate 7c1 firm lvl linkedin data -----------------------------------------------------------------------
 firm_lvl_output = merge(
   firm_lvl_dta,
   import_file(paste0(linkedin_input_dir, 'matched_firm_role_output.parquet')) %>% .[, .(weight = NA_sum(weight)), by = rcid],
@@ -38,7 +38,7 @@ firm_lvl_output = merge(
 
 write_parquet(firm_lvl_output,linkedin_firm_path)
 
-# generate NUTS-3-year lvl graduation data--------------------------------
+# generate 7c2 NUTS-3-year lvl graduation data--------------------------------
 uni_output = merge(uni_data, city_location, by.x = 'university_city', by.y = 'city') %>% 
   .[,.(total_grads = NA_sum(total_grads), data_grads = NA_sum(data_grads)), by= .(grad_year, NUTS_ID, NUTS_NAME)] %>% 
   unbalanced_lag(., 'NUTS_ID', 'grad_year', c('total_grads', 'data_grads'), 1:4)
@@ -55,8 +55,7 @@ vars_to_log = gpaste(c('total', 'data'), "_grads", c('', '_5ycum'))
 uni_output = uni_output[grad_year %in% year_range] %>% select(-con_fil(., 'lag')) %>% 
   mutate(across(vars_to_log, ~asinh(.), .names = 'log_{col}')) %>% 
   .[,log_total_grads_sq := log_total_grads^2]
-
-write_parquet(uni_output, paste0(linkedin_output_dir, '7c2_linkedin_firm_yr_lvl.parquet'))
+write_parquet(uni_output, paste0(linkedin_output_dir, '7c2_nuts_3_uni_lvl_output.parquet'))
 
 
 # generate firm-yr-lvl linkedin data --------------------------------------
@@ -96,8 +95,8 @@ output = output %>%
 ## merge in CASD data 
 if(!dummy_version){
 output = output %>% 
-  merge(import_file('1) data/9_age_data/9b_firm_lvl_birth_data.parquet', col_select = c('firmid_num', 'birth_year')), by = 'firmid_num') %>% 
-  merge(import_file('1) data/3_bs_br_data.parquet', col_select = c('firmid_num', 'year', 'NACE_BR', 'empl')), all.x =T, by = c('firmid_num', 'year')) 
+  merge(import_file(firm_lvl_birth_path, col_select = c('firmid_num', 'birth_year')), by = 'firmid_num') %>% 
+  merge(import_file(raw_bs_br_path, col_select = c('firmid_num', 'year', 'NACE_BR', 'empl')), all.x =T, by = c('firmid_num', 'year')) 
 }else{
     output = merge(output,data.table(
     firmid_num = sample(unique(output$firmid_num)),    
@@ -138,6 +137,6 @@ output = output[comp_data == 0,nace_comp_data_quartile:= 0] %>%
   select(-c(birth_year,empl))
 
 
-write_parquet(output,  v)
+write_parquet(output, linkedin_firm_yr_path)
 rm(list= setdiff(ls(), base_env)); gc()
 

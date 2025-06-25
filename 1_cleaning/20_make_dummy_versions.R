@@ -17,7 +17,7 @@ rm(list = ls());gc()
 source('2) code/0_set_parameter_values.R')
 
 # 3_bs_br_data -------------------------------------------------------------------------
-base = import_file('1) data/3_bs_br_data.parquet') %>% stratified_sample(., c('empl_bucket', 'NACE_BR', 'year'),.01)
+base = import_file(raw_bs_br_path) %>% stratified_sample(., c('empl_bucket', 'NACE_BR', 'year'),.01)
 base_dummy = gen_dummy_dataset(base, 
                   subset_vars =  c('empl_bucket'),
                   discrete_vars = c('empl', 'NACE_BR','year'),
@@ -28,8 +28,8 @@ write_parquet(base_dummy, paste0(dummy_data_dir,'3_bs_br_data.parquet'))
 
 
 # 4 ofats data -------------------------------------------------------------------------
-file_path = '1) data/4_OFATS.parquet'
-base = import_file('1) data/4_OFATS.parquet') %>% .[,name := 'x'] %>% stratified_sample(., c('ctryofats', 'year'),.01)
+file_path = raw_ofats_path
+base = import_file(raw_ofats_path) %>% .[,name := 'x'] %>% stratified_sample(., c('ctryofats', 'year'),.01)
 base_dummy = gen_dummy_dataset(base, 
                                subset_vars = c('ctryofats', 'year'),
                                discrete_vars = 'name',
@@ -40,7 +40,7 @@ write_parquet(base_dummy, gsub('1) data/', dummy_data_dir, file_path))
 
 
 # 5 customs data product level -----------------------------------------------------------------------
-file_path = '1) data/5_customs_product_level.parquet'
+file_path = raw_customs_product_lvl_path
 subset_vars = c('year', 'ctry_num',  'exim')
 base = import_file(file_path) %>% stratified_sample(., subset_vars,.001)
 base_dummy = gen_dummy_dataset(
@@ -54,7 +54,7 @@ write_parquet(base_dummy, gsub('1) data/', dummy_data_dir, file_path))
 rm(list= setdiff(ls(), c(base_env))); gc()
 
 # 6 customs data firm level -----------------------------------------------------------------------
-file_path = '1) data/6_customs_firm_level.parquet'
+file_path = raw_customs_firm_lvl_path
 subset_vars = c('year', 'ctry_num',  'exim')
 base = import_file(file_path) %>% stratified_sample(., subset_vars,.001)
 base_dummy = gen_dummy_dataset(

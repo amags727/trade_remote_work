@@ -23,7 +23,7 @@ if (making_extended_grav){
   firm_yr = import_file(firm_yr_path) %>% within_group_filter(., 'any(currently_export_customs == T)', 'firmid_num')
   
   export_vars = c('firmid_num', 'ctry_num', 'year', 'exim', 'value','products')
-  export_data = import_file('1) data/6_customs_firm_level.parquet', col_select = export_vars) %>%
+  export_data = import_file(raw_customs_firm_lvl_path, col_select = export_vars) %>%
     .[exim == 2 & year %in% year_range] %>% .[,exim := NULL] %>% rename(export_rev_customs= value)
   
   export_ctries = distinct(export_data, ctry_num)
@@ -74,7 +74,7 @@ if (making_extended_grav){
 # import files  --------------------------------------------------------
 extended_grav = import_file('1) data/0_misc_data/0d_all_countries_all_years_all_firms_grav_data.parquet') 
 
-customs_age_data = import_file('1) data/9_age_data/9c_firm_ctry_lvl_birth_data.parquet') %>% .[exim ==2] %>% .[exim := NULL]
+customs_age_data = import_file(firm_ctry_lvl_birth_path) %>% .[exim ==2] %>% .[exim := NULL]
 vars_to_any = gpaste(c('currently_export', 'nace_share_export', 'is_first_export_year','log_years_since_first_export_year'),'_customs')
 firm_yr = import_file(firm_yr_path) %>% rename_with(.cols = vars_to_any, ~paste0(., '_any_ctry')) %>% 
   select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total','share_empl_college', 'use_data','num_mkts', 'last_observed',

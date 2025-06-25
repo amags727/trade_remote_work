@@ -13,26 +13,22 @@ rm(list = ls());gc()
   setwd(root)
 }
 
-
-
 source('2) code/0_set_parameter_values.R')
 # import component datasets --------------------------------------------------------
 age_vars =  c('birth_year', gpaste('first_export_year_', c('customs', 'BS')),'last_observed', 'firmid_num')
-age_data = import_file('1) data/9_age_data/9b_firm_lvl_birth_data.parquet', col_select = age_vars)
+age_data = import_file(firm_lvl_birth_path, col_select = age_vars)
 
-linkedin_vars = c('firmid_num', 'year', gpaste(c('empl', 'avg_prestige'),'_', c('total', 'data')), 'share_comp_data',
-                  gpaste(c('nace_comp_data_quartile', 'log_comp_total', 'log_comp_data', 'use_data'), c("", '_lag1')), 'NACE_BR',
-                  'share_data_empl_analyst','share_empl_college') %>% unique() %>% setdiff(., c('avg_prestige_data'))
-linkedin_firm_yr = import_file(linkedin_firm_yr_path, col_select = linkedin_vars) 
+
+linkedin_firm_yr = import_file(linkedin_firm_yr_path) 
 
 bs_vars = c('firmid_num', 'year','dom_turnover', 'empl', 'capital', 'intangible_fixed_assets','for_turnover', 'labor_cost')
-bs_data = import_file('1) data/3_bs_br_data.parquet',col_select = bs_vars) %>% 
+bs_data = import_file(raw_bs_br_path,col_select = bs_vars) %>% 
   rename(total_export_rev_BS = for_turnover) %>%
   .[year %in% year_range & firmid_num %in% linkedin_firm_yr$firmid_num]
 
-firm_lvl_streak_info = import_file('1) data/9_age_data/9d_firm_lvl_export_streak_info.parquet')
+firm_lvl_streak_info = import_file(firm_lvl_export_birth_path)
 export_vars = c('firmid_num', 'year', 'exim', 'value','products')
-export_data = import_file('1) data/6_customs_firm_level.parquet', col_select = export_vars) %>%
+export_data = import_file(raw_customs_firm_lvl_path, col_select = export_vars) %>%
   .[exim == 2 & year %in% year_range] %>% .[,exim := NULL] %>%
   .[,.(num_mkts = .N, total_export_rev_customs = sum(value, na.rm = T), products_per_ctry = NA_mean(products)), by = .(firmid_num, year)]
 
@@ -101,16 +97,16 @@ rm(list= setdiff(ls(), c(base_env))); gc()
 linkedin_firms =import_file(linkedin_firm_yr_path, col_select = 'firmid_num') %>% pull('firmid_num') %>% unique()
 
 bs_vars = c('firmid_num', 'year', 'dom_turnover', 'empl', 'capital', 'intangible_fixed_assets','for_turnover')
-bs_data = import_file('1) data/3_bs_br_data.parquet',col_select = bs_vars) %>% 
+bs_data = import_file(raw_bs_br_path,col_select = bs_vars) %>% 
   rename(total_export_rev_BS = for_turnover) %>%
   .[year %in% year_range &! firmid_num %in% linkedin_firms] 
 
 export_vars = c('firmid_num', 'year', 'exim', 'value','products')
-export_data = import_file('1) data/6_customs_firm_level.parquet', col_select = export_vars) %>%
+export_data = import_file(raw_customs_firm_lvl_path, col_select = export_vars) %>%
   .[exim == 2 & year %in% year_range &! firmid_num %in% linkedin_firms] %>% .[,exim := NULL] %>%
   .[,.(num_mkts = .N, total_export_rev_customs = sum(value, na.rm = T), products_per_ctry = NA_mean(products)), by = .(firmid_num, year)]
 
-age_data = import_file('1) data/9_age_data/9b_firm_lvl_birth_data.parquet', col_select = c('firmid_num', 'birth_year'))
+age_data = import_file(firm_lvl_birth_path, col_select = c('firmid_num', 'birth_year'))
 firm_yr_linkedin = import_file(firm_yr_path) %>% .[,`:=`(comp_data = sinh(log_comp_data), comp_total= sinh(log_comp_total)) ]
 
 #### 

@@ -21,15 +21,24 @@ source('2) code/00_helper_functions.R')
   agg_data_dir = '1) data/17_industry_mkt_lvl_dta/'
   similiarity_dir = '1) data/0_misc_data/0c_similarity_matrices/'
 
+# paths for key dataset organized by the cleaning file in which they are created; I do this to better manage the 
+# need to use dummy datasets outside the casd environment 
+  # 1 import raw admin data 
+  raw_bs_br_path = '1) data/3_bs_br_data.parquet'
+  raw_ofats_path =  '1) data/4_OFATS.parquet'
+  raw_customs_product_lvl_path = '1) data/5_customs_product_level.parquet'
+  raw_customs_firm_lvl_path = '1) data/6_customs_firm_level.parquet'
+  
+  # 3 make firm age 
+  firm_lvl_birth_path = '1) data/9_age_data/9b_firm_lvl_birth_data.parquet'
+  firm_ctry_lvl_birth_path = '1) data/9_age_data/9c_firm_ctry_lvl_birth_data.parquet'
+  firm_lvl_export_birth_path = '1) data/9_age_data/9d_firm_lvl_export_streak_info.parquet'
   
   firm_yr_path = '1) data/10_firm_yr_lvl_dta.parquet'
   linkedin_firm_path = '1) data/7_revelio_data/c_final_outputs/7c1_linkedin_firm_lvl.parquet'
-  linkedin_firm_yr_path = '1) data/7_revelio_data/c_final_outputs/7c2_linkedin_firm_yr_lvl.parquet'
-  paths = c('firm_yr_path', 'linkedin_firm_yr_path', 'linkedin_firm_path')
-  if (dummy_version){ 
-    for (path in paths){
-      assign(path, gsub('1) data', '1a) dummy data', get(path)))
-    }}
+  linkedin_firm_yr_path = '1) data/7_revelio_data/c_final_outputs/7c3_linkedin_firm_yr_lvl.parquet'
+  
+  if (dummy_version){for (path in con_fil(ls(), 'path')){assign(path, gsub('1) data', '1a) dummy data', get(path)))}}
   
   
   analysis_round = 4
