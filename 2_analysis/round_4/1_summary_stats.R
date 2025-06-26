@@ -16,7 +16,7 @@ rm(list = ls());gc()
 
 source('2) code/0_set_parameter_values.R')
 # 1a generate summary stats  -------------------------------------------------------------------------
-firm_yr_w_unmatched = import_file('11_firm_yr_summary_stats_input.parquet')
+firm_yr_w_unmatched = import_file(firm_yr_summary_stats_path)
 int_vars = c('comp_data', 'comp_total', 'share_empl_college', 'avg_prestige_total',
              'dom_turnover','currently_export_BS' ,'total_export_rev_BS_cond', 'capital', 'intangible_fixed_assets','age',
              'currently_export_customs', 'total_export_rev_customs_cond', 'num_mkts_cond','products_per_ctry_cond')
@@ -103,6 +103,43 @@ ggsave(paste0(finished_output_dir, '1c_change_distribution.png'),
        height = 4, width = 8)
 
 
+
+
+
+# 1d data graduates across france ----------------------------------------------
+uni_data = import_file('1) data/7_revelio_data/c_final_outputs/7c2_nuts_3_uni_lvl_output.parquet') 
+if(dummy_version){firm_data = import_file(linkedin_firm_yr_path)}else{firm_data = import_file(firm_yr_path)}
+geo_data = gisco_nuts %>% filter(LEVL_CODE == 3, CNTR_CODE == 'FR', !grepl('FRY',NUTS_ID)) %>% 
+  st_transform(2154)
+  
+# Coordinates are in WGS84 (EPSG:4326), so convert if needed
+cities_sf <- data.frame(
+  name = c("Paris", "Marseille", "Lyon", "Toulouse", "Nice",
+           "Nantes", "Montpellier", "Strasbourg", "Bordeaux", "Lille"),
+  lon = c( 2.3522, 5.3698, 4.8357, 1.4442, 7.2620,
+           -1.5536, 3.8777, 7.7521, -0.5792, 3.0573),
+  lat = c(48.8566, 43.2965, 45.7640, 43.6047, 43.7102,
+          47.2184, 43.6119, 48.5734, 44.8378, 50.6292)) %>%
+  st_as_sf(., coords = c("lon", "lat"), crs = 4326) %>%
+  st_transform(2154)
+
+### MAKE UNI VERSION 
+break_vec = c(0,4, 40, 400, 4000)
+avg_graph  = uni_data %>% group_by(NUTS_ID) %>% summarize(across(con_fil(.,'grad'), ~NA_mean(.))) %>% 
+  mutate(log_data_grads = asinh(data_grads)) %>% 
+  merge(geo_data, ., by = 'NUTS_ID', all.x = T)  %>% 
+  mutate(across(con_fil(.,'grad'),~replace_na(., 0))) %>%
+  ggplot(.) + geom_sf(aes(fill = log_data_grads), lwd = 0) +
+  scale_fill_gradientn(
+    colours = c("#D73027", "#FC8D59", "#FEE08B", "#91BFDB", "#4575B4"),
+    values = scales::rescale(asinh(break_vec)),  # positions the color transitions
+    limits = asinh(c(0, 4000)),
+    breaks = asinh(break_vec),
+    labels = break_vec,
+    na.value = "lightgray",
+    name = "Data\nGraduates"
+  ) + geom_sf_text(data = cities_sf, aes(label = name), size = 3, nudge_y = 20000) + 
+  theme_void() 
 
 # generate plots of data use  ---------------------------------------------
 firm_yr = import_file(firm_yr_path) 
