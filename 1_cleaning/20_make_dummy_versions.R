@@ -68,28 +68,6 @@ rm(list= setdiff(ls(), c(base_env))); gc()
 
 
 
-# 10/11 firm_yr data  ----------------------------------------------------------------------
-## main firm yr 
-file_path = '1) data/10_firm_yr_lvl_dta.parquet'
-subset_vars = c('NACE_BR', 'use_data', 'year')
-base = import_file(file_path)  %>% stratified_sample(., subset_vars,.001)
-
-id_vars = con_fil(base, 'id')
-discrete_vars = c(names(base)[sapply(base,is.logical)] %>% setdiff(.,'use_data'),
-                  con_fil(base,'quartile','year','age'), 'use_data_lag1', 'use_data_lag2', 'last_observed', 'age', 'age_bracket',
-                  'num_mkts','num_mkts_cond' )
-
-base_dummy = gen_dummy_dataset(base, subset_vars, discrete_vars, id_vars, dont_repeat_ids_within = 'year')
-write_parquet(base_dummy, gsub('1) data/', dummy_data_dir, file_path))
-
-## summary stats version
-file_path = '1) data/11_firm_yr_summary_stats_input.parquet'
-subset_vars = c('NACE_BR', 'use_data', 'year', 'in_linkedin')
-base_dummy = gen_dummy_dataset(base, subset_vars, discrete_vars, id_vars, dont_repeat_ids_within = 'year')
-write_parquet(base_dummy, gsub('1) data/', dummy_data_dir, file_path))
-
-## cleanup
-rm(list= setdiff(ls(), c(base_env))); gc()
 # 12 firm ctry year -------------------------------------------------------
 file_path = '1) data/12_firm_yr_ctry_lvl_dta.parquet'
 

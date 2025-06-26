@@ -878,17 +878,23 @@ pretrend_graph = function(data, x_var, group_var, legend_placement = 'bottom',
   return(graph)}
 
 
-replace_in_files <- function(root_dir, pattern, replacement, file_pattern = "\\.R$") {
+replace_in_files <- function(root_dir,exceptions, pattern, replacement, file_pattern = "\\.R$", checking_only = F) {
   files <- list.files(path = root_dir, pattern = file_pattern, recursive = TRUE, full.names = TRUE)
+  excepted_files = con_fil(files, exceptions); print('excepted_files: '); print(excepted_files);
+  files = setdiff(files,excepted_files)
   
   for (file in files) {
     content <- readLines(file, warn = FALSE)
     if (any(grepl(pattern, content, fixed = TRUE))) {
+      cat("Found in: ", file, "\n")
+      if (!checking_only){
       cat("Updating:", file, "\n")
       updated <- gsub(pattern, replacement, content, fixed = TRUE)
       writeLines(updated, file)
+      }
     }
   }
+  
 }
 
 zero_proof_ntiles = function(x, n){

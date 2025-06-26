@@ -75,6 +75,10 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
   .[, gpaste('nace_share_export_', suffixes):= lapply(suffixes, function(x) NA_mean(get(paste0('currently_export_', x)))), by = c('NACE_BR', 'year')]
 
   ## add detrended variance values 
+  if (dummy_version){ ## the regressions will fail if we use dummy data 
+   detrended_vars = gpaste(c('', 'nace_avg_'),'log_total_export_rev_',suffixes, c('', '_cond'),'_detrended_var')
+   output[, (detrended_vars) := runif(.N)]
+  }else{
   for( suffix in suffixes){
     command_1 = gpaste('feols(output, log_total_export_rev_',suffix, '~log_age| firmid_num + year)')
     command_2 = gsub('log_age', gpaste('log_export_streak_age_', suffix), command_1)
@@ -85,6 +89,7 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
       output[non_dropped_obs, (var_name) := models[[i]]$residuals^2]
       output[, paste0('nace_avg_', var_name):= NA_mean(get(var_name)), by = .(NACE_BR, year)]
     }
+  }
   }
 
 write_parquet(output,firm_yr_path)
@@ -130,7 +135,7 @@ output = bs_data %>%
 output = rbindlist(list(output,firm_yr_linkedin), use.names = T, fill = T)[, in_linkedin := !is.na(comp_data)]
 
 ## export 
-write_parquet(output, '1) data/11_firm_yr_summary_stats_input.parquet')
+write_parquet(output, firm_yr_summary_stats_path)
 # cleanup -----------------------------------------------------------------
 rm(list= setdiff(ls(), c(base_env))); gc()
 
