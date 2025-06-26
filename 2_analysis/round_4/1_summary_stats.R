@@ -106,13 +106,20 @@ ggsave(paste0(finished_output_dir, '1c_change_distribution.png'),
 
 
 
-# 1d data graduates across france ----------------------------------------------
-uni_data = import_file('1) data/7_revelio_data/c_final_outputs/7c2_nuts_3_uni_lvl_output.parquet') 
-if(dummy_version){firm_data = import_file(linkedin_firm_yr_path)}else{firm_data = import_file(firm_yr_path)}
-geo_data = gisco_nuts %>% filter(LEVL_CODE == 3, CNTR_CODE == 'FR', !grepl('FRY',NUTS_ID)) %>% 
+# 1d/e data graduates/employees across france ----------------------------------------------
+uni_data = import_file('1) data/7_revelio_data/c_final_outputs/7c2_nuts_3_uni_lvl_output.parquet') %>%
+  group_by(NUTS_ID) %>% summarize(across(con_fil(.,'grad'), ~NA_mean(.))) %>% 
+  mutate(log_data_grads = asinh(data_grads)) %>% as.data.table()
+  
+firm_data = import_file(linkedin_firm_yr_region_path) %>% 
+  .[,.(empl_data = NA_sum(empl_data)), by = .(NUTS_ID, year)] %>% 
+  .[,.(empl_data = NA_mean(empl_data)), by = .(NUTS_ID)] %>% 
+  .[, log_empl_data := asinh(empl_data)]
+
+geo_data = gisco_nuts %>% filter(LEVL_CODE == 3,
+  CNTR_CODE == 'FR', !grepl('FRY',NUTS_ID)) %>%
   st_transform(2154)
   
-# Coordinates are in WGS84 (EPSG:4326), so convert if needed
 cities_sf <- data.frame(
   name = c("Paris", "Marseille", "Lyon", "Toulouse", "Nice",
            "Nantes", "Montpellier", "Strasbourg", "Bordeaux", "Lille"),
@@ -123,72 +130,35 @@ cities_sf <- data.frame(
   st_as_sf(., coords = c("lon", "lat"), crs = 4326) %>%
   st_transform(2154)
 
-### MAKE UNI VERSION 
-break_vec = c(0,4, 40, 400, 4000)
-avg_graph  = uni_data %>% group_by(NUTS_ID) %>% summarize(across(con_fil(.,'grad'), ~NA_mean(.))) %>% 
-  mutate(log_data_grads = asinh(data_grads)) %>% 
-  merge(geo_data, ., by = 'NUTS_ID', all.x = T)  %>% 
-  mutate(across(con_fil(.,'grad'),~replace_na(., 0))) %>%
-  ggplot(.) + geom_sf(aes(fill = log_data_grads), lwd = 0) +
+graphs = lapply(1:2, function(num){
+if (num == 1){
+  input = uni_data[,var := log_data_grads];
+  break_vec = c(0,4, 40, 400, 4000);
+  legend_name = 'Data\nGrads'}else{
+    input = firm_data[,var := log_empl_data]
+    break_vec = c(0,20, 200, 2000, 20000)
+    legend_name = "Data\nJobs"
+  }
+
+avg_graph  = merge(geo_data, input, by = 'NUTS_ID', all.x = T)  %>% 
+  mutate(var = replace_na(var, 0)) %>%
+  ggplot(.) + geom_sf(aes(fill = var), lwd = 0) +
   scale_fill_gradientn(
     colours = c("#D73027", "#FC8D59", "#FEE08B", "#91BFDB", "#4575B4"),
-    values = scales::rescale(asinh(break_vec)),  # positions the color transitions
-    limits = asinh(c(0, 4000)),
+    values = scales::rescale(asinh(break_vec)),  
+    limits = asinh(c(min(break_vec), max(break_vec))),
     breaks = asinh(break_vec),
     labels = break_vec,
-    na.value = "lightgray",
-    name = "Data\nGraduates"
-  ) + geom_sf_text(data = cities_sf, aes(label = name), size = 3, nudge_y = 20000) + 
+    name = legend_name) +
+  geom_sf_text(data = cities_sf, aes(label = name), size = 3, nudge_y = 20000) + 
   theme_void() 
+})
 
-# generate plots of data use  ---------------------------------------------
-firm_yr = import_file(firm_yr_path) 
-hi=firm_yr[, .(comp_data = NA_mean(comp_data/comp_total), firms_using_data = NA_sum(comp_data>0)/.N), by = year] %>% 
-  pivot_longer(-year) %>% as.data.table() %>% .[,value_adjusted := value / value[year == 2008], by = name] %>%
-  ggplot(., aes(x = year, y = value_adjusted,  color = name)) + geom_line()
+ggsave(paste0(gsub('1a) dummy data/99_fake_output/', '3) output/',finished_output_dir), '1d_data_graduates_map.png'),
+       graphs[[1]], width = 7, height = 7 )
 
-firm_yr = import_file(firm_yr_path)
-suffixes = c('customs', 'BS')
-prefixes  = c("eventually_", 'never_','not_', 'currently_', 'not_currently_')
-expansion = expand(prefixes, suffixes, names = c('prefix','suffix' )) %>% mutate(
-  export_var = paste0(prefix, 'use_data_and_export_', suffix),
-  dom_rev_var = paste0(prefix, 'use_data_dom_rev'),
-  export_rev_var = paste0(prefix, 'total_export_rev_',suffix),
-  export_rev_var_cond = paste0(prefix, 'total_export_rev_',suffix, '_cond'),
-  relative_exports =  paste0(prefix, 'relative_export_rev_',suffix),
-  pre_condition = paste0(prefix, 'use_data'),
-  post_condition = paste0('currently_export_', suffix))
-vars_to_mean = c('dom_turnover', paste0('total_export_rev_', suffixes), 
-                 unique(expansion$dom_rev_var),
-                 expansion$export_rev_var,
-                 expansion$export_rev_var_cond,
-                 expansion$relative_exports)
-
-
-graph_input = firm_yr[age>20, age := NA] %>%
-  .[,eventually_use_data := any(use_data), by = firmid_num] %>% 
-  .[, never_use_data := ! eventually_use_data] %>% 
-  .[,currently_use_data := use_data] %>% 
-  .[, not_currently_use_data := eventually_use_data & !currently_use_data] %>% 
-  .[,not_use_data := !use_data] %>% 
-  .[year >= first_export_year_BS, years_export_BS := year - first_export_year_BS] %>% 
-  .[year >= first_export_year_customs, years_export_customs := year - first_export_year_customs]  
-
-
-for(i in 1:nrow(expansion)){
-  graph_input[get(expansion$pre_condition[i])== T, (expansion$export_var[i]):= get(expansion$post_condition[i])]
-  graph_input[get(expansion$pre_condition[i])== T, (expansion$dom_rev_var[i]):= dom_turnover]
-  graph_input[get(expansion$pre_condition[i])== T, (expansion$export_rev_var[i]):= get(paste0('total_export_rev_',expansion$suffix[i]))]
-  graph_input[get(expansion$pre_condition[i])== T, (expansion$export_rev_var_cond[i]):= get(paste0('total_export_rev_',expansion$suffix[i],'_cond'))]
-  graph_input[get(expansion$pre_condition[i])== T & dom_turnover!=0, (expansion$relative_exports[i]):= get(paste0('total_export_rev_',expansion$suffix[i]))/dom_turnover]
-}
-
-graph_input = rbindlist(lapply(c('years_export_BS','years_export_customs', 'age'), function(age_variable){
-  temp = graph_input[, c(setNames(lapply(.SD[, ..vars_to_mean], NA_median), vars_to_mean)), by = c(age_variable)] %>% pivot_longer(., cols= -1) %>% 
-    rename(age = names(.)[1]) %>% as.data.table() %>%
-    .[,age_variable := age_variable] %>% .[age < 20] %>% 
-    .[,value_adjusted := value / value[age==0], by = name]
-}))
+ggsave(paste0(finished_output_dir, '1e_data_employment_map.png'),
+       graphs[[2]], width = 7, height = 7 )
 
 # clean up  ---------------------------------------------------------------
 rm(list= setdiff(ls(), base_env)); gc()
