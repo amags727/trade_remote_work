@@ -50,11 +50,11 @@ dummy_version = getwd() != "C:/Users/Public/Documents/Big data Project";
                           paste0(output_base, letters[analysis_round], '3_dummy_data/'),
                           '1a) dummy data')
   
-  if (dummy_version){ for (path in c('raw_output_dir', 'finished_output_dir')){
+  if (dummy_version){ for (path in c('output_base','raw_output_dir', 'finished_output_dir')){
       assign(path, gsub('3) output', '1a) dummy data/99_fake_output', get(path)))
     }}
   lapply(c(raw_output_dir, finished_output_dir, dummy_data_dir),function(x) suppressWarnings(dir.create(x, recursive = T)))
-  rm(output_base)
+
 
 # SET IMPORTANT PARAMETER VALUES  -----------------------------------------------------------------------
 year_range = 2008:2021
