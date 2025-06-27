@@ -83,6 +83,7 @@ numeric_ctry = function(df){
   merge(df, import_file('1) data/0_misc_data/0b_dictionaries/0b2_ctry_dict.parquet', col_select = c('ctry', 'ctry_num')), by = 'ctry') %>% select(-ctry)
 }
 ## PRESERVE INITIAL STATE OF AFFAIRS 
-base_env = c(ls(),'base_env')
+needed_for_import = c(gpaste(c('current_',''), c('import', 'export'), '_', c('name','dir')), 'code_to_run', 'i')
+base_env = c(ls(),'base_env', needed_for_import )
 
 

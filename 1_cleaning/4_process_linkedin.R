@@ -1,5 +1,5 @@
 # setup -------------------------------------------------------------------
-rm(list = ls()); gc();
+if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list = ls()))}; gc();
 
 ## set working directory dynamically 
 {
@@ -15,10 +15,11 @@ rm(list = ls()); gc();
 
 ## import helper functions 
 source('2) code/0_set_parameter_values.R')
+
+
+## set helpful directories
 linkedin_input_dir = '1) data/7_revelio_data/b_processed_data/linkedin/'
 linkedin_output_dir = '1) data/7_revelio_data/c_final_outputs/'
-
-
 # import data -------------------------------------------------------------
 city_location = import_file('1) data/7_revelio_data/b_processed_data/linkedin/linkedin_city_coords.parquet')
 role_dict = import_file(linkedin_input_dir,'revelio_role_dict.csv', col_select = c('role_k1500', 'total', 'data', 'data_analyst'))

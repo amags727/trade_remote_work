@@ -1,5 +1,5 @@
 # setup
-rm(list = ls())
+if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list = ls()))}
 library(data.table)
 library(haven)
 library(readxl)

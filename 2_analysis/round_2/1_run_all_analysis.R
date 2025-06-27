@@ -1,5 +1,5 @@
 #basic setup 
-rm(list = ls());
+if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list = ls()))};
 setwd('../..')
 if (!file.exists("2) code/00_helper_functions.R")){setwd(dirname(rstudioapi::getActiveDocumentContext()$path)); setwd('../..')}
 source('2) code/0_set_parameter_values.R')

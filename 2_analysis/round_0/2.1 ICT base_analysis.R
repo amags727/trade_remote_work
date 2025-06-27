@@ -1,4 +1,4 @@
-rm(list = ls())
+if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list = ls()))}
 
 # libraries
 library(data.table)
