@@ -166,8 +166,7 @@ nuts_lvl_output[valid_rows,grad_predicted_comp_data := sinh(predict(grad_model))
 ## generate prediction based on leave out values
 nuts_lvl_output[,nace_nut_comp_data := NA_sum(comp_data), by = .(NUTS_ID, NACE_BR, year)] %>% 
   .[,log_nace_non_nut_comp_data := asinh(NA_sum(comp_data)- nace_nut_comp_data), by = .(NACE_BR, year)] %>% 
-  .[,log_non_nace_nut_comp_data := asinh(NA_sum(comp_data)- nace_nut_comp_data), by = .(NUTS_ID, year)] %>% 
-  .[,nace_nut_comp_data := NULL]
+  .[,log_non_nace_nut_comp_data := asinh(NA_sum(comp_data)- nace_nut_comp_data), by = .(NUTS_ID, year)] 
 
 leave_out_model = feols(nuts_lvl_output, log_comp_data ~ log_nace_non_nut_comp_data + log_non_nace_nut_comp_data)
 valid_rows <- setdiff(1:nrow(nuts_lvl_output), -1*leave_out_model$obs_selection$obsRemoved)
@@ -177,14 +176,23 @@ nuts_lvl_output[valid_rows,leave_out_predicted_comp_data := sinh(predict(leave_o
 write_parquet(nuts_lvl_output, linkedin_firm_yr_region_path)
 
 
-
 ## add the predicted values to the firm-yr lvl dataset 
 firm_lvl_output = merge(
   firm_lvl_output %>% select(-con_fil(., 'log_predicted_comp_data')),
+  
+  ## add in the predicted values from region data 
   nuts_lvl_output[,.(log_grad_predicted_comp_data = asinh(NA_sum(grad_predicted_comp_data)),
                      log_leave_out_predicted_comp_data =  asinh(NA_sum(leave_out_predicted_comp_data))),
                   by= .(firmid_num,year)],
-  all.x = T, by = c('firmid_num', 'year'))
+  all.x = T, by = c('firmid_num', 'year')) %>% 
+  
+  ## add in control values from region data 
+  merge(nuts_lvl_output[, .(log_nace_nut_comp_data =   asinh(NA_sum(comp_total*nace_nut_comp_data)/ NA_sum(comp_total)),
+                            log_total_grads = asinh(NA_sum(total_grads*comp_total)/ NA_sum(comp_total))),
+                        by = .(firmid_num,year)],
+        all.x = T, by = c('firmid_num', 'year'))
+        
+  
 
 ## generate lagged variables
 lag_vars = c('empl_data','comp_data', 'log_comp_data', 'log_comp_total',
