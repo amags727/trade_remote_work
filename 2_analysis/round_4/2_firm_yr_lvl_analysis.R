@@ -253,28 +253,26 @@ base_command = reg_command('firm_yr',
             fe = "| firmid_num + year",
             iv = 'log_grad_predicted_comp_data + log_grad_predicted_comp_data_lag1',
             cluster = 'firmid_num') 
+
 commands = c(
   base_command,
   gsub("BS", 'customs', base_command),
   gsub("BS", 'customs', base_command) %>%
     gsub('_comp_data\\+', '_comp_data*nace_share_export_customs+',.) %>%
     gsub('ta_lag1', 'ta_lag1*nace_share_export_customs',.)) %>% c(., gsub('grad_', 'leave_out_',.)) %>% 
-  
   lapply(., function(command){
   if (grepl(command, 'grad')){
     output = c(command, gsub('log_age','log_age + log_total_grads'  ,command))
   }else{
     output = c(command, gsub('log_age','log_age + log_nace_nut_comp_data'  ,command))
-  }}) %>% flatten()
-
-
-model_output = evaluate_variations(data.frame(command = commands))[['model_output']]
+  }}) %>% flatten() %>% 
+  c(.,
+    gsub('firm_yr', "firm_yr[highest_comp_NUTS_ID != 'FR101']",.),
+    gsub('firm_yr', "firm_yr[!grepl('FR10', highest_comp_NUTS_ID)]",.))
+    
+model_output = evaluate_variations(data.frame(command = unlist(commands)))[['model_output']]
 write_rds(model_output, paste0(raw_output_dir,'2d_export_rev_IV.rds'))
-
-
 model_output = import_file(gsub("1a) dummy data/99_fake_output","3) output", raw_output_dir),
                            '2c_instrument_zero_stage.rds')
-
-
 rm(list= setdiff(ls(), c(base_env))); gc()
 
