@@ -13,8 +13,6 @@ if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list 
   setwd(root)
 }
 
-
-
 source('2) code/0_set_parameter_values.R')
 
 # make extended gravity data  --------------------------------------------------------
@@ -67,17 +65,18 @@ if (making_extended_grav){
     .[, either_grav_dist := grav_dist] %>% .[extended_grav_dist < grav_dist, either_grav_dist := extended_grav_dist] 
   
   
-  write_parquet(temp, '1) data/0_misc_data/0d_all_countries_all_years_all_firms_grav_data.parquet')
+  write_parquet(temp, extended_grav_path)
   rm(list= setdiff(ls(), base_env)); gc()
 }
 
 # import files  --------------------------------------------------------
-extended_grav = import_file('1) data/0_misc_data/0d_all_countries_all_years_all_firms_grav_data.parquet') 
+extended_grav = import_file(extended_grav_path) 
 
-customs_age_data = import_file(firm_ctry_lvl_birth_path) %>% .[exim ==2] %>% .[exim := NULL]
+customs_age_data = import_file(firm_ctry_lvl_birth_path) %>% .[exim ==2] %>% .[,exim := NULL]
 vars_to_any = gpaste(c('currently_export', 'nace_share_export', 'is_first_export_year','log_years_since_first_export_year'),'_customs')
 firm_yr = import_file(firm_yr_path) %>% rename_with(.cols = vars_to_any, ~paste0(., '_any_ctry')) %>% 
-  select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total','share_empl_college', 'use_data','num_mkts', 'last_observed',
+  select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total',
+           'share_empl_college', 'use_data','use_data_lag1','num_mkts', 'last_observed',
            con_fil(con_fil(., 'log', 'nace_comp_data_quartile', 'any_ctry'), 'BS', 'detrended', inc =F))) %>%
   .[,firmid_year_num := as.numeric(as.factor(paste0(firmid_num,"_", year)))] %>% 
   .[, `:=`(num_firms = .N, num_exporters = NA_sum(currently_export_customs_any_ctry)), by = year] %>% 
@@ -106,21 +105,17 @@ output = merge(firm_yr, extended_grav, by = c('firmid_num', 'year')) %>%
   .[, paste0('log_', vars_to_log) := lapply(vars_to_log, function(x) asinh(get(x)))]
 
   ## add variance information
-  command_1 = 'feols(output, log_export_rev_customs~ years_since_first_export_year| firmid_num + year + ctry_num)'
-  command_2 = 'feols(output, log_export_rev_customs~ years_since_streak_start| firmid_num + year + ctry_num)'
+  if (dummy_version){ ## the regressions will fail if we use dummy data 
+    detrended_vars = gpaste('log_export_rev_customs', c('', '_cond'),'_detrended_var')
+    output[, (detrended_vars) := runif(.N)]
+  }else{
+    command_1 = 'feols(output, log_export_rev_customs~ years_since_first_export_year| firmid_num + year + ctry_num)'
+    command_2 = 'feols(output, log_export_rev_customs~ years_since_streak_start| firmid_num + year + ctry_num)'
     models = list(eval(parse(text = command_1)), eval(parse(text = command_2)))
     for (i in 1:2){
       var_name = gpaste('log_export_rev_customs', ifelse(i==1, '', '_cond'), "_detrended_var")
       non_dropped_obs = setdiff(1:nrow(output),-1*models[[i]]$obs_selection$obsRemoved)
       output[non_dropped_obs, (var_name) := models[[i]]$residuals^2]
-    }
-
-write_parquet(output, '1) data/12_firm_yr_ctry_lvl_dta.parquet')
-
-
-
-
-
-
-
+    }}
+write_parquet(output, firm_yr_ctry_path) 
 

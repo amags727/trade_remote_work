@@ -194,17 +194,21 @@ reshape_to_summary = function(base_data, int_vars, key_variable, eliminate_na = 
   return(hi)
 }
 
-model_coef = function(model_output, cox = F){
-  if(!cox) return(unique(unlist(lapply(model_output, function(model){names(model$coefficients)}))))
-  if(cox)  return(unique(unlist(lapply(model_output, function(model){
-    setdiff(rownames(model$coefficients),
-            model$coefficients %>% as.data.frame() %>% filter(is.na(coef)) %>% rownames())
-  }))))
+model_coef = function(model_output, dummy_version = F, cox = F){
+  if(!dummy_version){
+    if(!cox) return(unique(unlist(lapply(model_output, function(model){names(model$coefficients)}))))
+    if(cox)  return(unique(unlist(lapply(model_output, function(model){
+      setdiff(rownames(model$coefficients),
+              model$coefficients %>% as.data.frame() %>% filter(is.na(coef)) %>% rownames())
+    }))))
+  }else{
+    return(lapply(model_output, function(model) attr(terms(model, stage = 1), 'term.labels')) %>% unlist() %>% unique())
+  }
 }
 
-comp_coef_names = function(original, new){
+comp_coef_names = function(original, new, dummy_version){
   if (typeof(original) == 'list'){
-    og = model_coef(original)
+    og = model_coef(original, dummy_version)
     if(is.null(og)) og = model_coef(original, T)
     original = og
   }
@@ -217,13 +221,16 @@ comp_coef_names = function(original, new){
   View(data.frame(original = original, new = new))
 }
 
-
+make_headers = function(header_span, header_names){
+  paste('&',gpaste('\\multicolumn{',header_span,'}{c}{', header_names,'}', collapse_str = '&&'), '\\\\')
+}
 # format table  -----------------------------------------------------------
 format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_names = NA, collapse_coef_names = T,
                         column_names = NA, custom_rows =NA, custom_row_placement = NA,  
                         headers = NA, divisions_before = NA, notes = NA,
                         note_width = .5, output_path = NA, caption = NULL, rescale_factor = NA, spacer_size = NA,
-                        coef_order = NA, cox = F,make_pdf= T,make_tex = T, final_commands = NA_character_){
+                        coef_order = NA, cox = F,make_pdf= T,make_tex = T, final_commands = NA_character_,
+                        dummy_version = F){
   if(!all_NA(coef_names)) coef_names = gsub('\\\\\\&', 'specialampreplacement',coef_names)
   insert_column_space <- function(input_string,after_column, og_columns) {
     # Count the number of '&' characters
@@ -233,8 +240,6 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
     if (amp_count >= after_column) {
       # Locate the positions of all '&' characters
       amp_positions = str_locate_all(input_string, "&")[[1]] 
-      
-      
       
       # Get the position of the fourth '&'
       fourth_amp_position <- amp_positions[after_column, 1]
@@ -254,34 +259,44 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   ## method for making the base table if we're doing regression analysis
   if (all_NA(summary_table_input)){
     num_columns = length(model_inputs)
+    
+    ## obtain the coef names 
+    {
+    if(dummy_version){
+     actual = lapply(model_inputs, function(model) attr(terms(model, stage = 1), 'term.labels'))
+    }else{
     if(cox){ actual = lapply(model_inputs, function(model){
       setdiff(rownames(model$coefficients),
               model$coefficients %>% as.data.frame() %>% filter(is.na(coef)) %>% rownames())})
-    }else{  actual = lapply(model_inputs, function(model){names(model$coefficients)})}
+    }else{  actual = lapply(model_inputs, function(model){names(model$coefficients)})}}
     actual = actual %>% unlist() %>% unique()
-    
+    }
+
+  
     if(!all(is.na(coef_names))){ coef_names = data.frame(actual = actual, in_table = coef_names) 
     }else{ coef_names = data.frame(actual = actual, in_table = actual)}
     unique_table_names = unique(coef_names$in_table)
     output_matrix = matrix(data = '', nrow = 2*ifelse(collapse_coef_names, length(unique_table_names), nrow(coef_names)),
                            ncol = length(model_inputs))
+  
     
     for (i in 1:length(model_inputs)){
       if(cox){
         temp_model = model_inputs[[i]]$coefficients %>% as.data.frame() %>% filter(!is.na(coef))
       }else{
+        if(dummy_version) temp_model = data.frame(coef_name = actual, coef_display = '1', se_display = "(0)")
+        if(!dummy_version){
         temp_model = data.frame(coef = as.numeric(model_inputs[[i]]$coefficients),
                                 "se(coef)"= as.numeric(model_inputs[[i]]$se),
                                 p = as.numeric(summary(model_inputs[[i]])$coeftable[, "Pr(>|t|)"])) %>%
           rename("se(coef)"= se.coef., 'Pr(>|z|)' = p)
         rownames(temp_model) = names(model_inputs[[i]]$coefficients) 
-      }
       temp_model = temp_model %>%
         mutate(across(c(coef, `se(coef)`), ~display_value(.), .names = "{col}_display"),
                coef_display = paste0(coef_display, case_when(`Pr(>|z|)` < .001 ~ "***",`Pr(>|z|)` < .01 ~'**',`Pr(>|z|)` < .05 ~ "*", T ~ "")),
                se_display = paste0('(', `se(coef)_display`, ')'))
       temp_model$coef_name = rownames(temp_model)
-      
+        }}
       for(j in 1:nrow(temp_model)){
         if(collapse_coef_names){
           temp_row =  coef_names %>% filter(actual ==temp_model$coef_name[j]) %>% pull(in_table) %>% .[1] 

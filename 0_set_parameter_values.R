@@ -2,7 +2,7 @@
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
              'arrow', 'fixest', 'countrycode', 'survival', 'knitr', 'parallel', 'patchwork', 'scales', 'duckdb', 
-             'truncnorm','sf', 'rnaturalearth', 'geosphere', 'giscoR')
+             'truncnorm','sf', 'rnaturalearth', 'geosphere', 'giscoR', 'googledrive')
 lapply(packages, function(package){tryCatch({library(package,character.only = T)}, error = function(cond){
   install.packages(package); library(package, character.only = T)
 })})
@@ -33,9 +33,14 @@ dummy_version = getwd() != "C:/Users/Public/Documents/Big data Project";
   linkedin_firm_path = '1) data/7_revelio_data/c_final_outputs/7c1_linkedin_firm_lvl.parquet'
   linkedin_firm_yr_path = '1) data/7_revelio_data/c_final_outputs/7c3_linkedin_firm_yr_lvl.parquet'
   linkedin_firm_yr_region_path = '1) data/7_revelio_data/c_final_outputs/7c4_linkedin_firm_yr_region_lvl.parquet'
+  
   # 5 make firm yr data 
   firm_yr_path = '1) data/10_firm_yr_lvl_dta.parquet'
   firm_yr_summary_stats_path = '1) data/11_firm_yr_summary_stats_input.parquet'
+  
+  #6 make firm ctry yr data 
+  extended_grav_path = '1) data/0_misc_data/0d_all_countries_all_years_all_firms_grav_data.parquet'
+  firm_yr_ctry_path = '1) data/12_firm_yr_ctry_lvl_dta.parquet'
   
   # If we're working offline use / make dummy versions 
   if (dummy_version){for (path in con_fil(ls(), 'path')){assign(path, gsub('1) data', '1a) dummy data', get(path)))}}
