@@ -221,8 +221,7 @@ write_rds(model_output, paste0(raw_output_dir,'2b.3_extensive_x_variance_with_in
 
 rm(list= setdiff(ls(), c(base_env))); gc()
 
-model_output = import_file(gsub("1a) dummy data/99_fake_output","3) output", raw_output_dir),
-                           '2b.3_extensive_x_variance_with_interactions.rds')
+model_output = import_file(de_dummy(raw_output_dir),'2b.3_extensive_x_variance_with_interactions.rds')
 
 # 2c iv first stage analysis  ---------------------------------------------
 firm_region_yr = import_file(linkedin_firm_yr_region_path)
@@ -236,43 +235,43 @@ model_output = evaluate_variations(data.frame(command = c(
   ))[['model_output']]
 write_rds(model_output, paste0(raw_output_dir,'2c_instrument_zero_stage.rds'))
 
-model_output = import_file(gsub("1a) dummy data/99_fake_output","3) output", raw_output_dir),
-                           '2c_instrument_zero_stage.rds')
+model_output = import_file(de_dummy(raw_output_dir), '2c_instrument_zero_stage.rds')
 
 
 rm(list= setdiff(ls(), c(base_env))); gc()
 # 2d redo export rev regressions with instrument --------------------------
 firm_yr = import_file(firm_yr_path)
+base_controls = paste("",'log_comp_total', 'log_comp_total_lag1','log_dom_turnover', 'log_dom_turnover_sq', 
+                      'avg_prestige_total', 'share_empl_college', 'log_age', sep = " + ")
 
-base_command = reg_command('firm_yr',
-            dep_var = 'log_total_export_rev_BS',
-            ind_var = 'log_comp_data+log_comp_data_lag1',
-            controls = paste("",'log_comp_total', 'log_comp_total_lag1',
-                        'log_dom_turnover', 'log_dom_turnover_sq', 'avg_prestige_total', 'share_empl_college',
-                        'log_age', sep = " + "),
-            fe = "| firmid_num + year",
-            iv = 'log_grad_predicted_comp_data + log_grad_predicted_comp_data_lag1',
-            cluster = 'firmid_num') 
+grad_variations = expand(
+  c('BS', 'customs'), # category
+  c(F,T), # interactions 
+  c('', "[highest_comp_NUTS_ID != 'FR101']", "[!grepl('FR10', highest_comp_NUTS_ID)]"), # loc_restriction
+  c("", 'yes'),  # iv 
+  c('', '+log_total_grads'), # additional control 
+  names = c('category','interaction','loc_restriction', 'iv','additional_control')) %>%
+  .[!(category == 'BS' & interaction ==T) & !(iv == '' & additional_control !='')] %>%
+  rowwise() %>% mutate(
+  ind_var = gpaste('log_comp_data', c('', '_lag1'), ifelse(interaction,'*nace_share_export_customs', '' ), collapse_str = "+"),
+  iv = ifelse(iv=='', iv, gsub('_comp','_grad_predicted_comp', ind_var))) 
 
-commands = c(
-  base_command,
-  gsub("BS", 'customs', base_command),
-  gsub("BS", 'customs', base_command) %>%
-    gsub('_comp_data\\+', '_comp_data*nace_share_export_customs+',.) %>%
-    gsub('ta_lag1', 'ta_lag1*nace_share_export_customs',.)) %>% c(., gsub('grad_', 'leave_out_',.)) %>% 
-  lapply(., function(command){
-  if (grepl(command, 'grad')){
-    output = c(command, gsub('log_age','log_age + log_total_grads'  ,command))
-  }else{
-    output = c(command, gsub('log_age','log_age + log_nace_nut_comp_data'  ,command))
-  }}) %>% flatten() %>% 
-  c(.,
-    gsub('firm_yr', "firm_yr[highest_comp_NUTS_ID != 'FR101']",.),
-    gsub('firm_yr', "firm_yr[!grepl('FR10', highest_comp_NUTS_ID)]",.))
-    
-model_output = evaluate_variations(data.frame(command = unlist(commands)))[['model_output']]
+leave_out_variations = grad_variations %>% mutate(
+  iv = gsub('grad', 'leave_out', iv),
+  additional_control = gsub('total_grads', 'nace_nut_comp_data', additional_control))
+
+variations = rbind(grad_variations, leave_out_variations) %>% rowwise %>% 
+  mutate(cluster = ifelse(iv =='', 'firmid_num',  'firmid_num + highest_comp_NUTS_ID'),
+         command = reg_command(
+           dataset = paste0('firm_yr', loc_restriction),
+           dep_var = paste0('log_total_export_rev_', category),
+           ind_var = ind_var,
+           controls = paste0(base_controls, additional_control),
+           fe = "| firmid_num +year",
+           iv = iv,
+           cluster = cluster)) 
+model_output = evaluate_variations(variations)[['model_output']]
+
 write_rds(model_output, paste0(raw_output_dir,'2d_export_rev_IV.rds'))
-model_output = import_file(gsub("1a) dummy data/99_fake_output","3) output", raw_output_dir),
-                           '2c_instrument_zero_stage.rds')
+model_output = import_file(de_dummy(raw_output_dir),'2d_export_rev_IV.rds')
 rm(list= setdiff(ls(), c(base_env))); gc()
-
