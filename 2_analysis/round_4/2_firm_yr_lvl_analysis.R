@@ -224,41 +224,45 @@ rm(list= setdiff(ls(), c(base_env))); gc()
 model_output = import_file(de_dummy(raw_output_dir),'2b.3_extensive_x_variance_with_interactions.rds')
 
 # 2c iv first stage analysis  ---------------------------------------------
-firm_region_yr = import_file(linkedin_firm_yr_region_path)
-model_output = evaluate_variations(data.frame(command = c(
-  'feols(data = firm_region_yr, log_comp_data ~ log_data_grads)',
-  'feols(data = firm_region_yr,log_comp_data ~ log_nace_non_nut_comp_data + log_non_nace_nut_comp_data)'
-  ) %>% c(
-    ., 
-    gsub('firm_region_yr',"firm_region_yr[NUTS_ID != 'FR101']",.),
-    gsub('firm_region_yr',"firm_region_yr[! grepl('FR10', NUTS_ID)]",.))
-  ))[['model_output']]
+firm_yr = import_file(firm_yr_path) %>% .[!is.na(comp_data)]
+
+variations = expand(
+  c('log_data_grads', 'resid_log_data_grads','log_nace_non_nut_comp_data + log_non_nace_nut_comp_data'),
+  c('', "[highest_comp_NUTS_ID != 'FR101']", "[!grepl('FR10', highest_comp_NUTS_ID)]"),
+  names = c('instrument', 'loc_restriction')) %>% mutate( command = reg_command(
+    dataset =  paste0('firm_yr', loc_restriction),
+    dep_var = 'log_comp_data', 
+    ind_var = instrument,
+    fe = '| firmid_num + year',
+    cluster = 'firmid_num + highest_comp_NUTS_ID'))
+model_output = evaluate_variations(variations)[['model_output']]
 write_rds(model_output, paste0(raw_output_dir,'2c_instrument_zero_stage.rds'))
-
 model_output = import_file(de_dummy(raw_output_dir), '2c_instrument_zero_stage.rds')
-
-
 rm(list= setdiff(ls(), c(base_env))); gc()
+
 # 2d redo export rev regressions with instrument --------------------------
 firm_yr = import_file(firm_yr_path)
 base_controls = paste("",'log_comp_total', 'log_comp_total_lag1','log_dom_turnover', 'log_dom_turnover_sq', 
                       'avg_prestige_total', 'share_empl_college', 'log_age', sep = " + ")
 
+leave_out_variations = expand()
 grad_variations = expand(
+  c('std', 'resid'), # grad_version
   c('BS', 'customs'), # category
   c(F,T), # interactions 
   c('', "[highest_comp_NUTS_ID != 'FR101']", "[!grepl('FR10', highest_comp_NUTS_ID)]"), # loc_restriction
   c("", 'yes'),  # iv 
-  c('', '+log_total_grads'), # additional control 
-  names = c('category','interaction','loc_restriction', 'iv','additional_control')) %>%
-  .[!(category == 'BS' & interaction ==T) & !(iv == '' & additional_control !='')] %>%
+  names = c('grad_version','category','interaction','loc_restriction', 'iv')) %>%
+  .[!(category == 'BS' & interaction ==T)] %>%
   rowwise() %>% mutate(
   ind_var = gpaste('log_comp_data', c('', '_lag1'), ifelse(interaction,'*nace_share_export_customs', '' ), collapse_str = "+"),
-  iv = ifelse(iv=='', iv, gsub('_comp','_grad_predicted_comp', ind_var))) 
+  iv = ifelse(iv=='', iv, gsub('log_comp_data', 'log_data_grads', ind_var)),
+  iv = ifelse(grad_version == 'resid', gsub('log_', 'resid_log_', iv), iv)) 
 
-leave_out_variations = grad_variations %>% mutate(
-  iv = gsub('grad', 'leave_out', iv),
-  additional_control = gsub('total_grads', 'nace_nut_comp_data', additional_control))
+leave_out_variations = grad_variations %>% filter(grad_version == 'std') %>% mutate(
+  iv = ifelse(interaction,
+  gpaste('log_', c('nace_non_nut', 'non_nace_nut'), '_comp_data', c('', '_lag1'), '*nace_share_export_customs', collapse_str = "+"),
+  gpaste('log_', c('nace_non_nut', 'non_nace_nut'), '_comp_data', c('', '_lag1'), collapse_str = "+")))
 
 variations = rbind(grad_variations, leave_out_variations) %>% rowwise %>% 
   mutate(cluster = ifelse(iv =='', 'firmid_num',  'firmid_num + highest_comp_NUTS_ID'),
@@ -266,12 +270,16 @@ variations = rbind(grad_variations, leave_out_variations) %>% rowwise %>%
            dataset = paste0('firm_yr', loc_restriction),
            dep_var = paste0('log_total_export_rev_', category),
            ind_var = ind_var,
-           controls = paste0(base_controls, additional_control),
+           controls = base_controls,
            fe = "| firmid_num +year",
            iv = iv,
-           cluster = cluster)) 
-model_output = evaluate_variations(variations)[['model_output']]
+           cluster = cluster)) %>% as.data.table() %>% .[,index := .I] %>% select(index, everything())
 
+model_output = evaluate_variations(variations)[['model_output']]
 write_rds(model_output, paste0(raw_output_dir,'2d_export_rev_IV.rds'))
 model_output = import_file(de_dummy(raw_output_dir),'2d_export_rev_IV.rds')
 rm(list= setdiff(ls(), c(base_env))); gc()
+
+
+
+

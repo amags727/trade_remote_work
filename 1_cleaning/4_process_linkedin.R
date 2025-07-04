@@ -109,6 +109,8 @@ role_lvl_data = import_file(linkedin_input_dir, 'matched_firm_role_output.parque
     merge(uni_output %>% rename(year = grad_year), by= c("NUTS_ID", 'year'), all.x =T) %>% 
     .[, (con_fil(., 'grad')) := lapply(con_fil(., 'grad'), function(x) replace_na(get(x), 0))]
 }
+write_parquet(nuts_lvl_output, linkedin_firm_yr_region_path)
+
 ## collapse to firm yr level 
 {
 firm_lvl_output = rbindlist(lapply(year_range, function(year){
@@ -157,50 +159,31 @@ firm_lvl_output = rbindlist(lapply(year_range, function(year){
   }
 } 
 
-## restrict region sample to match firm sample; generate prediction based on grad rates 
-nuts_lvl_output = merge(nuts_lvl_output, firm_lvl_output[,.(NACE_BR, year, firmid_num)], by = c('firmid_num', 'year')) 
-grad_model = feols(nuts_lvl_output, log_comp_data ~ log_data_grads)
-valid_rows <- setdiff(1:nrow(nuts_lvl_output), -1*grad_model$obs_selection$obsRemoved)
-nuts_lvl_output[valid_rows,grad_predicted_comp_data := sinh(predict(grad_model))]
+## generate instrument inputs 
+nuts_lvl_output = nuts_lvl_output %>%
+  merge(firm_lvl_output[,.(firmid_num,comp_data, year, NACE_BR)] %>% 
+        rename(total_comp_data=comp_data), by = c('firmid_num', 'year')) %>% 
+  .[,out_of_nuts_comp_data := total_comp_data - comp_data] %>% .[,total_comp_data := NULL] %>% 
+  .[,nace_nut_comp_data := NA_sum(comp_data)- comp_data, by = .(NUTS_ID, NACE_BR, year)] %>%
+  .[,nace_non_nut_comp_data := NA_sum(comp_data) - nace_nut_comp_data - out_of_nuts_comp_data, by = .(NACE_BR, year)] %>% 
+  .[,non_nace_nut_comp_data := NA_sum(comp_data) - nace_nut_comp_data, by = .(NUTS_ID, year)]
 
-## generate prediction based on leave out values
-nuts_lvl_output[,nace_nut_comp_data := NA_sum(comp_data), by = .(NUTS_ID, NACE_BR, year)] %>% 
-  .[,log_nace_non_nut_comp_data := asinh(NA_sum(comp_data)- nace_nut_comp_data), by = .(NACE_BR, year)] %>% 
-  .[,log_non_nace_nut_comp_data := asinh(NA_sum(comp_data)- nace_nut_comp_data), by = .(NUTS_ID, year)] 
+log_wgted_mean = function(int_var, wgt){ asinh(NA_sum(int_var*wgt)/ NA_sum(wgt))}
+c_vars = con_fil(con_fil(nuts_lvl_output, 'grads', 'nace'),'5y','log', inc = F)
+nuts_collapsed = nuts_lvl_output[,setNames(lapply(.SD[, ..c_vars],function(x) log_wgted_mean(x,comp_total)),
+                                           paste0('log_',c_vars)),  by = .(firmid_num,year)]
 
-leave_out_model = feols(nuts_lvl_output, log_comp_data ~ log_nace_non_nut_comp_data + log_non_nace_nut_comp_data)
-valid_rows <- setdiff(1:nrow(nuts_lvl_output), -1*leave_out_model$obs_selection$obsRemoved)
-nuts_lvl_output[valid_rows,leave_out_predicted_comp_data := sinh(predict(leave_out_model))]
+resid_grad_model = feols(nuts_collapsed, log_data_grads ~ log_total_grads | firmid_num)
+valid_rows <- setdiff(1:nrow(nuts_collapsed), -1*resid_grad_model$obs_selection$obsRemoved)
+nuts_collapsed[valid_rows, resid_log_data_grads := resid(resid_grad_model)]
 
-## export nuts lvl output 
-write_parquet(nuts_lvl_output, linkedin_firm_yr_region_path)
-
-
-## add the predicted values to the firm-yr lvl dataset 
-firm_lvl_output = merge(
-  firm_lvl_output %>% select(-con_fil(., 'log_predicted_comp_data')),
-  
-  ## add in the predicted values from region data 
-  nuts_lvl_output[,.(log_grad_predicted_comp_data = asinh(NA_sum(grad_predicted_comp_data)),
-                     log_leave_out_predicted_comp_data =  asinh(NA_sum(leave_out_predicted_comp_data))),
-                  by= .(firmid_num,year)],
-  all.x = T, by = c('firmid_num', 'year')) %>% 
-  
-  ## add in control values from region data 
-  merge(nuts_lvl_output[, .(log_nace_nut_comp_data =   asinh(NA_sum(comp_total*nace_nut_comp_data)/ NA_sum(comp_total)),
-                            log_total_grads = asinh(NA_sum(total_grads*comp_total)/ NA_sum(comp_total))),
-                        by = .(firmid_num,year)],
-        all.x = T, by = c('firmid_num', 'year'))
-        
-  
+firm_lvl_output = merge(firm_lvl_output %>% select(-con_fil(., 'predicted')),
+                        nuts_collapsed, all.x = T, by = c('firmid_num', 'year'))
 
 ## generate lagged variables
-lag_vars = c('empl_data','comp_data', 'log_comp_data', 'log_comp_total',
-             'nace_comp_data_quartile', 'use_data', 'share_comp_data',
-             'log_grad_predicted_comp_data', 'log_leave_out_predicted_comp_data') 
 firm_lvl_output = firm_lvl_output[comp_data == 0,nace_comp_data_quartile:= 0] %>%
   .[comp_data > 0, nace_comp_data_quartile := ntile(comp_data,4), by = c('NACE_BR', 'year')] %>% 
-  unbalanced_lag(.,'firmid_num', 'year',lag_vars , 1,expand = T,birth_var = 'birth_year') %>% 
+  unbalanced_lag(.,'firmid_num', 'year',c('log_comp_total', con_fil(., 'data','grad')), 1,expand = T,birth_var = 'birth_year') %>% 
   .[,`:=`(empl_data_delta = empl_data - empl_data_lag1,
           share_comp_data_delta = share_comp_data - share_comp_data_lag1)] %>%
   select(-c(birth_year,empl))
@@ -208,8 +191,6 @@ firm_lvl_output = firm_lvl_output[comp_data == 0,nace_comp_data_quartile:= 0] %>
 
 write_parquet(firm_lvl_output, linkedin_firm_yr_path)
 rm(list= setdiff(ls(), base_env)); gc()
-
-
 # hold off for right now  -------------------------------------------------
 ## gen leave out instrument vars
 #firm_lvl_output[,nace_nut_comp_data := NA_sum(comp_data), by = .(NUTS_ID, NACE_BR, year)] %>% 
