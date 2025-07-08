@@ -7,6 +7,7 @@ phi_g = 1; % goods productivity
 gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
 nu = .25;
+
 % data parameters 
 phi_d = 1; % data productivity 
 alpha_1 = .5; % cobb douglas coefficient on data labor 
@@ -18,7 +19,7 @@ theta = .25; % mean reversion parameter of z (closer to one faster mean reversio
 
 % Simulation Parameters
 rho = 0.05; %discount rate
-Delta = 1000; % 1/Delta = time_step
+Delta = 100; % 1/Delta = time_step
 crit = 10^(-6);
 maxit = 500;
 
@@ -31,7 +32,7 @@ Sigma_ub = Q /(2*theta); % Sigma_ub is the value such that drift = 0 when the fi
 Sigma_lb = 1e-2;
 
 % define the state space; 
-I = 10;
+I = 12;
 num_state_vars = 4;
 lb = [repmat(z_lb,1,3), Sigma_lb]; ub = [repmat(z_ub,1,3), Sigma_ub];
 grid_vectors = cell(1, num_state_vars);
@@ -76,32 +77,11 @@ v= V_0;
 for n=1:maxit
 V= v;
 [dv_f, dv_b, dv_2] = e1_compute_derivatives(v, d_state_space,I, num_state_vars, len_state);
+dv_final = e1_resolve_upwind_directions(dv_b, dv_f, dv_2, ...
+    z_act, z_hat, Sigma, xi, E_x, E_pi, ...
+    w, alpha_1, alpha_2, nu, phi_d, sigma_a, theta, Q, len_state, num_state_vars);
 
-
-
-% Carry out the updwind 
-Ib = false(len_state,num_state_vars); If = Ib; I_final = If;
-   
-for i = 1:num_state_vars
-     dv_b_temp = dv_b; dv_b_temp(If) = dv_f(If);
-     dv_f_temp = dv_f; dv_f_temp(Ib) = dv_b(Ib); 
-     optim_f =  e1_optim_calc(dv_f_temp, dv_2, w, z_act, z_hat, Sigma, xi, alpha_1, alpha_2, nu, phi_d, sigma_a, theta, Q, E_x, E_pi);
-     optim_b =  e1_optim_calc(dv_b_temp, dv_2, w, z_act, z_hat, Sigma, xi, alpha_1, alpha_2, nu, phi_d, sigma_a, theta, Q, E_x, E_pi);
-     
-     Iunique = optim_f.drift.overall .* optim_b.drift.overall >= 0;
-     Ib = Iunique & optim_f.drift.overall <= 0;
-     If = Iunique & optim_f.drift.overall > 0;
-
-     if all(Iunique(:)) || isequal(Iunique, I_final)
-         break
-     else
-         I_final = Iunique;
-     end
-end
-Ib = Ib | (~I_final & optim_f.ham_rep <= optim_b.ham_rep);
-If = If | (~I_final & optim_f.ham_rep > optim_b.ham_rep);
-dv_upwind = Ib.*dv_b + If.*dv_f;
-optim =  e1_optim_calc(dv_upwind, dv_2, w, z_act, z_hat, Sigma, xi, alpha_1, alpha_2, nu, phi_d, sigma_a, theta, Q, E_x, E_pi);
+optim =  e1_optim_calc(dv_final, dv_2, w, z_act, z_hat, Sigma, xi, alpha_1, alpha_2, nu, phi_d, sigma_a, theta, Q, E_x, E_pi);
 A_matrix = e1_construct_A_matrix(optim, d_state_space,I, num_state_vars, len_state);
 
 
@@ -111,7 +91,7 @@ b =  optim.pi_with_actions + V/Delta;
 V = B\b;
 Vchange = V - v;
 v =  V;
-%v = V;
+
 
 [max_val, max_index ] = max(abs(Vchange));
 dist(n) = max_val;
