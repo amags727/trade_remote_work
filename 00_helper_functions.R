@@ -206,7 +206,7 @@ model_coef = function(model_output, dummy_version = F, cox = F){
   }
 }
 
-comp_coef_names = function(original, new, dummy_version){
+comp_coef_names = function(original, new, dummy_version = F){
   if (typeof(original) == 'list'){
     og = model_coef(original, dummy_version)
     if(is.null(og)) og = model_coef(original, T)
@@ -489,13 +489,14 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   # output table to file 
   if (!is.na(output_path)){
     if (make_tex){
-      if(!file.exists(output_path) | !grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
-        writeLines(table, output_path)
-      }else{
-        writeLines(table, 'temp.tex');
-        drive_update(output_path, 'temp.tex')
-        file.remove('temp.tex')
-      }
+      writeLines(table, output_path)
+      #if(!file.exists(output_path) | !grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
+      #  writeLines(table, output_path)
+      #}else{
+       # writeLines(table, 'temp.tex');
+      #  drive_update(output_path, 'temp.tex')
+      #  file.remove('temp.tex')
+      #}
     }
     if (make_pdf){
       latex_preamble <- "\\documentclass[11pt]{article}\\usepackage{adjustbox,amsmath,amsthm,amssymb,enumitem,graphicx,dsfont,mathrsfs,float,caption,multicol,ragged2e,xcolor,changepage,hyperref,printlen,wrapfig,stackengine, fancyhdr,pdflscape,parskip}\\hypersetup{colorlinks=true, linkcolor=blue, filecolor=magenta, urlcolor=blue,}\\usepackage[margin=1in]{geometry}\\usepackage[utf8]{inputenc}\\renewcommand{\\qedsymbol}{\\rule{0.5em}{0.5em}}\\def\\lp{\\left(}\\def\\rp{\\right)}\\DeclareMathOperator*{\\argmin}{arg\\,min}\\DeclareMathOperator*{\\argmax}{arg\\,max}\\def\\code#1{\\texttt{#1}}\\newcommand\\fnote[1]{\\captionsetup{font=small}\\caption*{#1}}\\usepackage[savepos]{zref}\\raggedcolumns\\RaggedRight\\makeatletter \\makeatother\\def\\bfseries{\\fontseries \\bfdefault \\selectfont\\boldmath}\\graphicspath{{./graphics/}}"
@@ -503,12 +504,13 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
       tinytex::latexmk("temp.tex")
       pdf_path = gsub('tex', 'pdf', output_path)
       file.remove("temp.tex")
-      if(file.exists(pdf_path) & grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
-        drive_update(pdf_path, 'temp.pdf')
-        file.remove('temp.pdf')
-      }else{
-      file.rename('temp.pdf', pdf_path)
-      }
+      file.rename('temp.pdf', pdf_path) 
+     # if(file.exists(pdf_path) & grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
+    #    drive_update(pdf_path, 'temp.pdf')
+     #   file.remove('temp.pdf')
+     # }else{
+    #  file.rename('temp.pdf', pdf_path)
+    #  }
     }
   }
   

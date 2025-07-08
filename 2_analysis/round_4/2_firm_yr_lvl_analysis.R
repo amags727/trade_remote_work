@@ -40,6 +40,7 @@ write_rds(model_output, paste0(raw_output_dir,'2a.1_export_rev.rds'))
 
 ## output results 
 {
+model_output = import_file(de_dummy(raw_output_dir),'2a.1_export_rev.rds')
 coef_names = c(gpaste(c('', 'lagged '),'log payroll ', c('data', 'total'), order = 3:1),
                gpaste('log dom. revenue', c('', ' sq')), 'empl. prestige', 'share empl. college grad', 'log firm age',
                rep(c(gpaste(c("", '\\hspace{5 pt}x ', '\\hspace{5 pt}lx '), 'share industry exporting'), 'log export\nstreak year'),2))
@@ -225,7 +226,6 @@ model_output = import_file(de_dummy(raw_output_dir),'2b.3_extensive_x_variance_w
 
 # 2c iv first stage analysis  ---------------------------------------------
 firm_yr = import_file(firm_yr_path) %>% .[!is.na(comp_data)]
-
 variations = expand(
   c('log_data_grads', 'resid_log_data_grads','log_nace_non_nut_comp_data + log_non_nace_nut_comp_data'),
   c('', "[highest_comp_NUTS_ID != 'FR101']", "[!grepl('FR10', highest_comp_NUTS_ID)]"),
@@ -234,10 +234,21 @@ variations = expand(
     dep_var = 'log_comp_data', 
     ind_var = instrument,
     fe = '| firmid_num + year',
-    cluster = 'firmid_num + highest_comp_NUTS_ID'))
+    cluster = 'firmid_num + highest_comp_NUTS_ID')) %>% mutate(index = 1:nrow(.))
 model_output = evaluate_variations(variations)[['model_output']]
 write_rds(model_output, paste0(raw_output_dir,'2c_instrument_zero_stage.rds'))
-model_output = import_file(de_dummy(raw_output_dir), '2c_instrument_zero_stage.rds')
+
+## GENERATE THE OUTPUT 
+model_output = import_file(de_dummy(raw_output_dir), '2c_instrument_zero_stage.rds') %>% 
+  .[variations %>% filter(loc_restriction == "[highest_comp_NUTS_ID != 'FR101']") %>% pull(index)]
+label = '2c_first_stage_performance'
+format_table(model_output, label = label,
+             notes = paste0("Robust Standard Errors clustered at the firm x NUTS-3 level.",
+                            " All Regressions exclude Paris NUTS-3 region and include firm and year FE."),
+             note_width = .6,
+             output_path =  paste0(de_dummy(finished_output_dir), label, '.tex'), make_tex = F )
+             
+
 rm(list= setdiff(ls(), c(base_env))); gc()
 
 # 2d redo export rev regressions with instrument --------------------------
@@ -245,7 +256,8 @@ firm_yr = import_file(firm_yr_path)
 base_controls = paste("",'log_comp_total', 'log_comp_total_lag1','log_dom_turnover', 'log_dom_turnover_sq', 
                       'avg_prestige_total', 'share_empl_college', 'log_age', sep = " + ")
 
-leave_out_variations = expand()
+# gen variations to run
+{
 grad_variations = expand(
   c('std', 'resid'), # grad_version
   c('BS', 'customs'), # category
@@ -260,11 +272,12 @@ grad_variations = expand(
   iv = ifelse(grad_version == 'resid', gsub('log_', 'resid_log_', iv), iv)) 
 
 leave_out_variations = grad_variations %>% filter(grad_version == 'std') %>% mutate(
-  iv = ifelse(interaction,
-  gpaste('log_', c('nace_non_nut', 'non_nace_nut'), '_comp_data', c('', '_lag1'), '*nace_share_export_customs', collapse_str = "+"),
-  gpaste('log_', c('nace_non_nut', 'non_nace_nut'), '_comp_data', c('', '_lag1'), collapse_str = "+")))
+  iv = case_when(iv == '' ~ '',
+  interaction ~gpaste('log_', c('nace_non_nut', 'non_nace_nut'), '_comp_data', c('', '_lag1'), '*nace_share_export_customs', collapse_str = "+"),
+  T ~ gpaste('log_', c('nace_non_nut', 'non_nace_nut'), '_comp_data', c('', '_lag1'), collapse_str = "+")))
 
-variations = rbind(grad_variations, leave_out_variations) %>% rowwise %>% 
+variations = rbind(grad_variations %>% mutate(iv_version = paste0('grad_', grad_version)),
+                   leave_out_variations %>% mutate(iv_version = 'leave_out')) %>% rowwise %>% 
   mutate(cluster = ifelse(iv =='', 'firmid_num',  'firmid_num + highest_comp_NUTS_ID'),
          command = reg_command(
            dataset = paste0('firm_yr', loc_restriction),
@@ -273,11 +286,37 @@ variations = rbind(grad_variations, leave_out_variations) %>% rowwise %>%
            controls = base_controls,
            fe = "| firmid_num +year",
            iv = iv,
-           cluster = cluster)) %>% as.data.table() %>% .[,index := .I] %>% select(index, everything())
+           cluster = cluster)) %>% as.data.table() %>% .[,index := .I] %>% select(index, everything()) 
+}
 
 model_output = evaluate_variations(variations)[['model_output']]
 write_rds(model_output, paste0(raw_output_dir,'2d_export_rev_IV.rds'))
 model_output = import_file(de_dummy(raw_output_dir),'2d_export_rev_IV.rds')
+
+for( iv_type in unique(variations$iv_version )){
+temp_model_output = variations[iv_version == iv_type & loc_restriction == "[highest_comp_NUTS_ID != 'FR101']"] %>% 
+  pull(index) %>% model_output[.]
+label = paste0('2d.',iv_type)
+coef_names = c(gpaste(c('', 'lagged '),'log payroll ', c('data', 'total'), order = 3:1),
+               gpaste('log dom. revenue', c('', ' sq')), 'empl. prestige', 'share empl. college grad', 'log firm age',
+               gpaste(c('', 'lagged '),'log payroll data'),
+               rep(gpaste(c("", '\\hspace{5 pt}x ', '\\hspace{5 pt}lx '), 'share industry exporting'),2))
+
+format_table(temp_model_output, label = label,
+             coef_names = coef_names,
+             caption = paste0("IV Analysis of Export Revenue (", gsub('_', ' ', iv_type), ' version)'),
+             coef_order = c(1,11,2,12,10,3:9),
+             headers = "&\\multicolumn{2}{c}{Total Export Rev (Balance Sheet)}& &\\multicolumn{4}{c}{Total Export Rev (Customs)}\\\\",
+             divisions_before = 3,
+             rescale_factor = 1,
+             custom_rows = list("",'', c("Version", rep(c('OLS', 'IV'),3))),
+             custom_row_placement = c(18,33,34),
+             final_commands = "table = gsub('lx', 'x',table)",
+             notes = paste0("Robust Standard Errors clustered at the firm x NUTS-3 level.",
+                            " All Regressions exclude Paris NUTS-3 region and include firm and year FE."),
+             note_width = 1.1,
+             output_path =  paste0(de_dummy(finished_output_dir), label, '.tex'), make_tex = F )
+}
 rm(list= setdiff(ls(), c(base_env))); gc()
 
 
