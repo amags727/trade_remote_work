@@ -33,7 +33,7 @@ firm_yr_ctry = import_file(firm_yr_ctry_path)
 
 variations = expand(
   c(F,T), # extensive_margin
-  c('', '[currently_export_customs == T]', '[currently_export_customs_any_ctry == T]'), # exporter restriction 
+  c('','[currently_export_customs_any_ctry == T]', '[currently_export_customs == T]'), # exporter restriction 
   c(F,T), # interaction
   names =c('extensive_margin', 'export_restriction','interaction')) %>% rowwise() %>% mutate(
     ind_var = gpaste('log_comp_data', c('', '_lag1'), ifelse(interaction,'*nace_share_export_customs_any_ctry', '' ), collapse_str = "+"),
