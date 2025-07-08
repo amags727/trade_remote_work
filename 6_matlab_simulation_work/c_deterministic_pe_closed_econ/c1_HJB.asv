@@ -74,12 +74,14 @@ for n=1:maxit
         (~I_final & optim_min.ham > optim_max.ham).*dv_min + ...
         (~I_final & optim_min.ham <= optim_max.ham).*dv_max;
     optimal = c1_optim_calc(dv_final,Sigma,xi, E_x, E_pi, alpha_1, alpha_2,...
-    phi_d, sigma_a,Q, w, theta);
+    phi_d, sigma_a,Q, w, theta);dv
+
     
     %CONSTRUCT TRANSITION MATRIX 
-    X = - min(optimal.drift,0)/d_Sigma;
-    Y = - max(optimal.drift,0)/d_Sigma + min(optimal.drift,0)/d_Sigma;
-    Z =   max(optimal.drift,0)/d_Sigma;
+    X = - min(drift_b,0)/d_Sigma;
+    Y = - max(drift_f,0)/d_Sigma + min(drift_b,0)/d_Sigma;
+    Z =   max(drift_f,0)/d_Sigma;
+    
     
     A_matrix = sparse(I,I);
     for i = 1:I
@@ -99,7 +101,7 @@ for n=1:maxit
     
     %SOLVE FOR NEW V
     B = (rho + 1/Delta)*speye(I) - A_matrix;
-    b =  optimal.pi_with_actions + V/Delta;
+    b =  pi + V/Delta;
     V = B\b;
     Vchange = V - v;
     v = V;

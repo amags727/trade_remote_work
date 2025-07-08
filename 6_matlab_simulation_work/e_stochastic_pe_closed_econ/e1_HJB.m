@@ -1,5 +1,5 @@
 clear all; close all; clc;
-addpath(genpath('../e_helper_functions'))
+addpath(genpath('e_helper_functions'))
 
 % production parameters 
 w = 1; % wage
@@ -65,8 +65,8 @@ xi = alpha_1*phi_d*E_x.^alpha_2;
 % guess v_0; 
 % all states have long term profits of a perfectly forecast a, with
 % Sigma set at ss value with no data investment 
-R_0 = sigma_a^2;
-Sigma_0 = -theta*R_0 + sqrt(theta^2*R_0^2 + Q*R_0);
+R_0 = sigma_a^(-2);
+Sigma_0 = (-theta + sqrt(theta^2 + Q*R_0))/R_0;
 [~, idx] = min(abs(Sigma - Sigma_0));
 idx_0 = find(z_hat == a_act & Sigma== Sigma(idx),1, 'first' );
 V_0 = repmat(A_tilde(idx_0)*pi_bar / rho, len_state,1);
