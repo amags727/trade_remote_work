@@ -8,5 +8,4 @@ vec_Omega = -K \ reshape(Q, [], 1);
 
 % Reshape the solution back to matrix form
 Omega_0 = reshape(vec_Omega, n, n);
-
 end 
