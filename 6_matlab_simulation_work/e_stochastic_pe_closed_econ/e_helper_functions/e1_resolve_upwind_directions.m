@@ -80,6 +80,7 @@ for idx = 1:length(rows_with_ambiguity)
         col = unknown_columns(j);
         combo_matrix(:,col) = (1 - combos(:,j)) .* dv_b(i,col) + combos(:,j) .* dv_f(i,col);
     end
+    combo_matrix(:, known_columns) = repmat(dv_final(i, known_columns),num_combos,1);
 
     optim = e1_optim_calc(combo_matrix, ...
         repmat(dv_2(i,:), num_combos, 1),w, ...
