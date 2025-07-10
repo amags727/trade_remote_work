@@ -8,12 +8,12 @@ gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
 
 % data parameters 
-phi_d = 1; % data productivity 
+phi_d = 10; % data productivity 
 alpha_1 = .5;  % cobb douglas coefficient on data labor 
 alpha_2 = .5; % cobb douglas coefficient on raw data 
 sigma_a = 1.1; % sd of noise term 
-sqrt_Q = 1.1; % sd of random component of z
-Q = sqrt_Q^2;
+Q = 1.1.^2; % variance of random component of z
+
 theta = .9; % mean reversion parameter of z (closer to one faster mean reversion)
 
 % Simulation Parameters
@@ -24,15 +24,14 @@ maxit = 500;
 
 % Define the state space 
 I = 20;
-Sigma_ub = sqrt_Q^2 /(2*theta); % Sigma_ub is the value such that drift = 0 when the firm doesn't participate in market 
+Sigma_ub = Q /(2*theta); % Sigma_ub is the value such that drift = 0 when the firm doesn't participate in market 
 Sigma_lb = 1e-2;
 Sigma = linspace(Sigma_lb,Sigma_ub, I)';
 d_Sigma = Sigma(2) - Sigma(1);
 
 % Define Expected Quality (A_tilde) and related values 
-penalty =  Sigma + sigma_a^2;
-A_bar = max(penalty) + (max(penalty)-min(penalty));
-A_tilde = A_bar - penalty;
+top_bottom_quality_ratio = 2;
+A_tilde = ch1_gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a);
 x_bar = 1/min(A_tilde); % base demand 
 pi_bar = x_bar*w*phi_g^-1*(gamma-1)^-1; % base profits 
 E_x = x_bar*A_tilde;
@@ -48,8 +47,6 @@ V_0 = repmat(E_pi(idx) / rho, I,1);
 v= V_0;
 
 for n=1:maxit
-    disp(n)
-
     V=v;
     % Define forward/ backward difference  
     dv_f = [V(2:I)-V(1:I-1); 0] / d_Sigma;
@@ -61,9 +58,9 @@ for n=1:maxit
     %carry out upwind procedure 
     %noting that Sigma_dot is decreasing in dv_Sigma
     dv_min = min(dv_b,dv_f); dv_max =  max(dv_b,dv_f);
-    optim_min = c1_optim_calc(dv_min,Sigma,xi, E_x, E_pi, alpha_1, alpha_2,...
+    optim_min = ch2_optim_calc(dv_min,Sigma,xi, E_x, E_pi, alpha_1, alpha_2,...
     phi_d, sigma_a,Q, w, theta);
-    optim_max = c1_optim_calc(dv_max,Sigma,xi, E_x, E_pi, alpha_1, alpha_2,...
+    optim_max = ch2_optim_calc(dv_max,Sigma,xi, E_x, E_pi, alpha_1, alpha_2,...
     phi_d, sigma_a,Q, w, theta);
 
     Ib = false(I,1); If = Ib; I_final = If;
@@ -74,7 +71,7 @@ for n=1:maxit
         Ib.*dv_b + If.*dv_f +... 
         (~I_final & optim_min.ham > optim_max.ham).*dv_min + ...
         (~I_final & optim_min.ham <= optim_max.ham).*dv_max;
-    optimal = c1_optim_calc(dv_final,Sigma,xi, E_x, E_pi, alpha_1, alpha_2,...
+    optimal = ch2_optim_calc(dv_final,Sigma,xi, E_x, E_pi, alpha_1, alpha_2,...
     phi_d, sigma_a,Q, w, theta);
     
     %CONSTRUCT TRANSITION MATRIX 
@@ -107,10 +104,7 @@ for n=1:maxit
     
     dist(n) = max(max(abs(Vchange)));
     if dist(n)<crit
-            disp('Value Function Converged, Iteration = ')
-            disp(n)
+        fprintf('Value Function Converged, Iteration = %g\n',n)
             break
     end
 end
-
-optimal.L
