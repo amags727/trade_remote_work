@@ -1,21 +1,22 @@
-function A_block = d1_construct_A_matrix(drift, dim)
-% Constructs sparse transition matrices per network using upwind logic,
-% correctly accumulating diagonal entries and handling boundary contributions.
+function A_block = dh7_make_A_matrix(drift, d_Sigma)
 
-A_cell = cell(dim.num_networks, 1);
-strides = cumprod([1, repmat(dim.I, 1, dim.num_state_vars - 1)]);
+%setup 
+[len_Sigma,num_state_vars, num_networks] = size(drift );
+I = round(len_Sigma.^(1/num_state_vars));
+A_cell = cell(num_networks, 1);
+strides = cumprod([1, repmat(I, 1, num_state_vars - 1)]);
 
-parfor network = 1:dim.num_networks
+parfor network = 1:num_networks
     row_idx = [];
     col_idx = [];
     vals = [];
 
-    Y_total = zeros(dim.len_Sigma, 1);
-    base_idx = (1:dim.len_Sigma)';
+    Y_total = zeros(len_Sigma, 1);
+    base_idx = (1:len_Sigma)';
 
-    for state_num = 1:dim.num_state_vars
+    for state_num = 1:num_state_vars
         stride = strides(state_num);
-        block_size = dim.I * stride;
+        block_size = I * stride;
 
         fwd_idx = base_idx + stride;
         bwd_idx = base_idx - stride;
@@ -24,10 +25,10 @@ parfor network = 1:dim.num_networks
         valid_bwd = mod(base_idx - 1, block_size) >= stride;
 
         % Compute components
-        X = -min(drift(:,state_num,network), 0) / dim.d_Sigma(state_num);
-        Z =  max(drift(:,state_num,network), 0) / dim.d_Sigma(state_num);
-        Y = -max(drift(:,state_num,network), 0) / dim.d_Sigma(state_num) + ...
-            min(drift(:,state_num,network), 0) / dim.d_Sigma(state_num);
+        X = -min(drift(:,state_num,network), 0) / d_Sigma(state_num);
+        Z =  max(drift(:,state_num,network), 0) / d_Sigma(state_num);
+        Y = -max(drift(:,state_num,network), 0) / d_Sigma(state_num) + ...
+            min(drift(:,state_num,network), 0) / d_Sigma(state_num);
 
         % Add reflected components to the diagonal where fwd/bwd is invalid
         Y = Y + (~valid_bwd) .* X + (~valid_fwd) .* Z;
@@ -51,7 +52,7 @@ parfor network = 1:dim.num_networks
     vals    = [vals; Y_total];
 
     % Assemble sparse matrix
-    A_cell{network} = sparse(row_idx, col_idx, vals, dim.len_Sigma, dim.len_Sigma);
+    A_cell{network} = sparse(row_idx, col_idx, vals, len_Sigma, len_Sigma);
     temp = A_cell{network};
     if max(abs(sum(temp,2)))>10^(-12)
         disp('Improper Transition Matrix')
@@ -60,14 +61,14 @@ parfor network = 1:dim.num_networks
 end
 
 % === Build sparse block-diagonal matrix manually ===
-total_size = dim.len_Sigma * dim.num_networks;
+total_size = len_Sigma * num_networks;
 all_row = [];
 all_col = [];
 all_val = [];
 
-for n = 1:dim.num_networks
+for n = 1:num_networks
     [i, j, v] = find(A_cell{n});
-    offset = (n - 1) * dim.len_Sigma;
+    offset = (n - 1) * len_Sigma;
     all_row = [all_row; i + offset];
     all_col = [all_col; j + offset];
     all_val = [all_val; v];

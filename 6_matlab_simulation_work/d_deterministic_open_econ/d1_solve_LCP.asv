@@ -4,9 +4,9 @@ addpath(genpath('d_helper_functions'))
 
 %% === SET PARAMETER VALUES ===
 % base parameters
-I = 5;
+I = 6;
 num_mkts = 2;
-LCP_yn =false;
+LCP_yn =true;
 networks = [0,0;1,0;1,1]; %networks = dec2bin(0:(2^num_mkts - 1)) - '0';
 num_networks = size(networks,1);
 
@@ -94,4 +94,3 @@ if dist(n)<crit
 end
 end
 
-max(optim.L(:))

@@ -1,5 +1,6 @@
-clear all; close all; clc;
+clear all; close all; 
 addpath(genpath('c_helper_functions'))
+
 % production parameters 
 w = 1; % wage
 phi_g = 1; % goods productivity
@@ -8,7 +9,7 @@ gamma_tilde = gamma/(gamma-1);
 
 % data parameters 
 phi_d = 1; % data productivity 
-alpha_1 = .5; % cobb douglas coefficient on data labor 
+alpha_1 = .5;  % cobb douglas coefficient on data labor 
 alpha_2 = .5; % cobb douglas coefficient on raw data 
 sigma_a = 1.1; % sd of noise term 
 sqrt_Q = 1.1; % sd of random component of z
@@ -111,3 +112,5 @@ for n=1:maxit
             break
     end
 end
+
+optimal.L

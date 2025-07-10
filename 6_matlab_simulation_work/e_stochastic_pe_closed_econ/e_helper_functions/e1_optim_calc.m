@@ -6,9 +6,9 @@ function optim = e1_optim_calc(dv, dv_2, w, z_act, z_hat, ...
 
     %% Optimal labor L
     marginal_val = dv(:,2).*(z_act - z_hat) - dv(:,4).*Sigma + 0.5 .* dv_2(:,2) .* Sigma;
-    smooth_marginal = softplus(marginal_val);
-    L = (1./w .* Sigma .* xi .* smooth_marginal).^(-1/(alpha_1 - 1));
-    L = real(L);  % Ensure real
+    L_input = 1./w .* Sigma .* xi .*  marginal_val;
+    L_input(L_input<0) = 0; %L_input = softplus(L_input);
+    L = real(L_input.^(1/(1 - alpha_1)));
 
     %% Optimal μ
     mu = dv(:,3) / (2 * nu);

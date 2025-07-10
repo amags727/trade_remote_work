@@ -1,0 +1,38 @@
+function V = dh8_update_V(LCP_yn,profit,v, A_matrix, rho, Delta, networks, ec, rev_ec)
+%===SETUP ====
+[len_Sigma, num_networks] = size(v);
+B = (rho + 1/Delta)*speye(len_Sigma.*num_networks) - A_matrix;
+
+   
+% If we're just doing value func iteration 
+if ~LCP_yn
+    b = reshape(profit + v./Delta, [],1);
+    V = reshape(B\b, [], num_networks);
+
+% If we're solving the LCP  
+else
+    pi_stacked = reshape(profit, [],1);
+    v_stacked = reshape(v, [], 1);
+    vstar = zeros(size(v)); best_alt = vstar;
+    for network = 1:num_networks
+        temp = v; temp(:,network) = -inf;
+        temp = temp - sum(max(0, networks - networks(network,:)).*ec,2)'...
+            -  sum(max(0, networks(network,:)- networks).*rev_ec,2)';
+        [vstar(:,network), best_alt(:,network)] = max(temp, [],2);
+    end
+    vstar_stacked = reshape(vstar, [], 1);
+    vec = pi_stacked + v_stacked/Delta;
+    q = -vec + B*vstar_stacked;
+    z0 = v_stacked - vstar_stacked;
+    l = zeros(size(v_stacked));
+    u = Inf*ones(size(v_stacked));
+    z = LCP(B,q,l,u,z0,0);
+    z = LCP(B,q,l,u,z,0);
+    LCP_error = max(abs(z.*(B*z + q)));
+    if LCP_error > 10^(-5)
+        fprintf('LCP not solved');
+    end
+    % update the value function
+    V= reshape(z+ vstar_stacked, [], num_networks);
+end
+end
