@@ -24,7 +24,7 @@ gamma_tilde = gamma/(gamma-1);
 rho = 0.05; %discount rate
 Delta = 1000; % 1/Delta = time_step
 crit = 10^(-6);
-maxit = 50;
+maxit = 500;
 
 % Define the state space 
 I = 20;
@@ -107,11 +107,8 @@ for n=1:maxit
     
     dist(n) = max(max(abs(Vchange)));
     if dist(n)<crit
-        %fprintf('Value Function Converged, Iteration = %g\n',n)
+        fprintf('Value Function Converged, Iteration = %g\n',n)
             break
-    end
-    if n== maxit
-        disp('failed to converge')
     end
 end
 
@@ -120,5 +117,6 @@ max_L_position = round(100*(1 - max_L_index / I));
 ss_indx =  find(optimal.drift < 0, 1);
 L_at_SS = optimal.L(ss_indx);
 ss_pos = round((1-ss_indx / I)*100);
+
 fprintf('max L value/position: (%g,%g%%)\n',round(max_L,3), max_L_position);
-fprintf('S.S L value/SS position: (%g,%g%%)\n',round(L_at_SS,3), ss_pos);
+fprintf('SS L value/SS position: (%g,%g%%)\n',round(L,3), max_L_position);
