@@ -1,8 +1,8 @@
-clear all; close all; clc;
+clear all; close all; 
 addpath(genpath('c_helper_functions'))
 
 %key parameters
-I = 100;
+I = 20;
 w = 1; % data worker wage
 phi_d = 1; % data productivity 
 alpha_1 = .5;  % cobb douglas coefficient on data labor 
@@ -17,10 +17,11 @@ theta = .9; % mean reversion parameter of z (closer to one faster mean reversion
 sigma_a = 1.1; % sd of noise term 
 
 % production parameters 
+w_g = 1; % wage for production workers 
 gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
 x_bar = x_scale_factor*phi_g^gamma; % base demand 
-pi_bar = x_bar*w*phi_g^-1*(gamma-1)^-1; % base profits 
+pi_bar = x_bar*w_g*phi_g^-1*(gamma-1)^-1; % base profits 
 
 % Simulation Parameters
 rho = 0.05; %discount rate
