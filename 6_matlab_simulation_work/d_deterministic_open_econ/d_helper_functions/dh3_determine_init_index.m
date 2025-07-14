@@ -1,4 +1,4 @@
-function init_index = dh3_determine_init_index(Sigma_mat,Sigma,D,Q,sigma_a,num_mkts)
+function init_index = dh3_determine_init_index(Sigma_mat,Sigma,D,Q,sigma_a,num_mkts,networks)
 len_Sigma = size(Sigma_mat, 3);
 R = [sigma_a(1)^(-2), 0; 0, 0];
 Sigma_ss_guess = squeeze(Sigma_mat(:,:, len_Sigma, 1));

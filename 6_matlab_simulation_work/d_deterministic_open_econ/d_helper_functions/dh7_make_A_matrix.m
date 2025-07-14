@@ -1,4 +1,4 @@
-function A_block = dh7_make_A_matrix(drift, d_Sigma)
+function [A_block,A_cell] = dh7_make_A_matrix(drift, d_Sigma)
 
 %setup 
 [len_Sigma,num_state_vars, num_networks] = size(drift );

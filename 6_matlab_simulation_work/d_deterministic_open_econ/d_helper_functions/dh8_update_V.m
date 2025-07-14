@@ -1,16 +1,20 @@
-function V = dh8_update_V(LCP_yn,profit,v, A_matrix, rho, Delta, networks, ec, rev_ec)
+function V = dh8_update_V(LCP_yn,profit,v, A_matrix,A_matrix_cells, rho, Delta, networks, ec, rev_ec)
 %===SETUP ====
 [len_Sigma, num_networks] = size(v);
-B = (rho + 1/Delta)*speye(len_Sigma.*num_networks) - A_matrix;
 
    
 % If we're just doing value func iteration 
 if ~LCP_yn
-    b = reshape(profit + v./Delta, [],1);
-    V = reshape(B\b, [], num_networks);
+    V = zeros(size(v));
+    for network = 1:num_networks
+        B = (rho + 1/Delta)*speye(len_Sigma) - A_matrix_cells{network};
+        b = profit(:,network) + v(:,network)./Delta;
+        V(:,network) = B\b;
+    end
 
 % If we're solving the LCP  
 else
+    B = (rho + 1/Delta)*speye(len_Sigma.*num_networks) - A_matrix;
     pi_stacked = reshape(profit, [],1);
     v_stacked = reshape(v, [], 1);
     vstar = zeros(size(v)); best_alt = vstar;

@@ -1,4 +1,4 @@
-function [Q,D,Sigma] = d1_make_state_space(num_mkts,I, lambda, sigma_z, theta)
+function [Q,D,Sigma] = dh1_make_state_space(num_mkts,I, lambda_tilde, sigma_z, theta)
 
 %% Construct D and Q
 Q = zeros(num_mkts,num_mkts); 
@@ -7,7 +7,7 @@ for index = 1:num_mkts^2
     if i == j
         Q(index) = sigma_z(i)^2;
     else
-        Q(index) =  sigma_z(i)*sigma_z(j)*lambda;
+        Q(index) =  sigma_z(i)*sigma_z(j)*lambda_tilde;
     end
 end
 
