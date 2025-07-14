@@ -21,7 +21,7 @@ sigma_z = repmat(1.1,1,num_mkts); % variance of random component of z
 theta = .9; % mean reversion parameter of z (closer to one faster mean reversion)
 lambda_tilde = .5; % correlation coefficient between mkts 
 fixed_cost_scaling = 1.1; %fc * fixed_cost_scaling = foreign market fixed costs 
-ec_multiplier = 1.6; % fc * ec_multiplier = ec 
+ec_multiplier = .01; % fc * ec_multiplier = ec 
 
 
 %% == Set other parameters ==
@@ -136,4 +136,4 @@ for t = 1:T
     end 
 end
 
-find(network_path == 2, 1, 'first')
+netw
