@@ -26,14 +26,17 @@ coef_names = c(gpaste(c('', 'lagged '),'log payroll ', c('data', 'total'), order
                gpaste('log dom. revenue', c('', ' sq')), 'empl. prestige', 'share empl. college grad', 'log firm age', 
                gpaste(c("", '\\hspace{5 pt}x ', '\\hspace{5 pt}lx '), 'share industry exporting'))
 
-
-# 3a export rev  --------------------------------------------------------
 firm_yr_ctry = import_file(firm_yr_ctry_path)
 
+firm_yr_ctry[, `:=`(grav_dist=asinh(grav_dist),
+                    either_grav_dist=asinh(either_grav_dist))]
+
+
+# 3a export rev  --------------------------------------------------------
 
 variations = expand(
   c(F,T), # extensive_margin
-  c('','[currently_export_customs_any_ctry == T]', '[currently_export_customs == T]'), # exporter restriction 
+  c('', '[currently_export_customs_any_ctry == T]', '[currently_export_customs == T]'), # exporter restriction 
   c(F,T), # interaction
   names =c('extensive_margin', 'export_restriction','interaction')) %>% rowwise() %>% mutate(
     ind_var = gpaste('log_comp_data', c('', '_lag1'), ifelse(interaction,'*nace_share_export_customs_any_ctry', '' ), collapse_str = "+"),
@@ -135,47 +138,69 @@ format_table(temp_model_output, label = label, caption = 'Country Level Results:
 }
 
 # 3c  gravity ------------------------------------------
-## run regressions 
-grav_types<-c("extended_", "", "either_")
 
-for(grav_type in grav_types){
-  
-  dep_var<-'log_total_export_rev_customs'
-  base_command = reg_command('firm_yr_ctry',
-                             dep_var = dep_var,
-                             ind_var = paste('log_comp_data', 'log_comp_data_lag1', 'log_comp_total', 'log_comp_total_lag1',
-                                             'log_dom_turnover', 'log_dom_turnover_sq', 'avg_prestige_total', 'share_empl_college',
-                                             'log_age', sep = " + "),
-                             fe = "| firmid_num + year", 
-                             cluster = 'firmid_num') 
-  interactions = gpaste(grav_type, 'grav_',c('region', 'language', 'border'))
-  variations = data.frame(command =  c(base_command, 
-                                       unlist(lapply(interactions, function(inter) gsub("customs~", paste0('customs~log_comp_data*', inter, ' +log_comp_data_lag1*', inter, ' + '),base_command)))))
-  
-  model_output = evaluate_variations(variations)[['model_output']]
+gravity_vars<-c("grav_region", "grav_border", "grav_language", "grav_dist", 
+                "either_grav_region", "either_grav_border", "either_grav_language", "either_grav_dist", 
+                "ctry_pop", "nace_ctry_pop")
+
+gravity_vars<-c("grav_dist","either_grav_dist")
+
+
+for(grav_var in gravity_vars){
+  variations = expand(
+    c(F,T), # extensive_margin
+    c(''), # exporter restriction 
+    c(F,T), # interaction
+    names =c('extensive_margin', 'export_restriction','interaction')) %>% rowwise() %>% mutate(
+      ind_var = gpaste('log_comp_data', c('', '_lag1'), ifelse(interaction,paste0('*', grav_var), '' ), collapse_str = "+"),
+      ind_var = ifelse(extensive_margin, gsub('log_comp_data', 'use_data', ind_var), ind_var),
+      command = reg_command(dataset = paste0('firm_yr_ctry', export_restriction),
+                            dep_var = 'log_export_rev_customs',
+                            ind_var = ind_var,
+                            controls = base_controls, 
+                            fe = "| firmid_num + year + ctry_num",
+                            cluster = 'firmid_num'
+      ))
+  model_output =evaluate_variations(variations)[['model_output']]
+  write_rds(raw_output_dir, paste0('3c_', grav_var, '_gravity.RDS'))
   
   ## output results 
+  if(dummy_version) model_output = rep(model_output[1:2],6)
   coef_names = c(gpaste(c('', 'lagged '),'log payroll ', c('data', 'total'), order = 3:1),
-                 gpaste('log dom. revenue', c('', ' sq')), 'empl. prestige', 'share empl. college grad', 'log firm age',
-                 c(gpaste(c('', '\\hspace{5 pt}x ',  '\\hspace{5 pt}lx '), gsub("_", "", grav_type), ' gravity ', c("region"))),
-                 c(gpaste(c('', '\\hspace{5 pt}x ',  '\\hspace{5 pt}lx '), gsub("_", "", grav_type), ' gravity ', c("language"))),
-                 c(gpaste(c('', '\\hspace{5 pt}x ',  '\\hspace{5 pt}lx '), gsub("_", "", grav_type), ' gravity ', c("border"))))
+                 gpaste('log dom. revenue', c('', ' sq')), 'empl. prestige', 'share empl. college grad', 'log firm age', 
+                 gpaste(c('\\hspace{5 pt}x ', '\\hspace{5 pt}lx '), gsub("_", " ", gsub("grav", "gravity", gsub("dist", "distance", gsub("ctry", "country", gsub("pop", "population", grav_var)))))),
+                 gpaste(c('', 'lagged '), 'use data'),
+                 gpaste(c('\\hspace{5 pt}mx ', '\\hspace{5 pt}nx '), gsub("_", " ", gsub("grav", "gravity", gsub("dist", "distance", gsub("ctry", "country", gsub("pop", "population", grav_var)))))))
+  coef_order = c(1, 10, 2, 11,  12, 14, 13, 15, 3:9)
   
-  label = paste0("3c_", grav_type, "gravity")
-  format_table(model_output, label = label,
-               coef_names = coef_names,
-               coef_order = c(1,11,14,17,2,12,15,18,10,13,16,3:9),
-               headers = "&\\multicolumn{4}{c}{Total Export Rev. (Customs)}\\\\",
-               # divisions_before = 4,
-               rescale_factor = 0.8,
+  if(grav_var!="grav_region"){
+    coef_names<-append(coef_names, gsub("_", " ", gsub("grav", "gravity", grav_var)), after=9)
+    coef_order = c(1, 11, 2, 12,  13, 15, 14, 16, 3:9)
+  }
+  
+  label = paste0('3c_', grav_var, '_gravity')
+  temp_model_output = model_output;
+  temp_coef_names = coef_names
+  
+  
+  format_table(temp_model_output, label = label,
+               coef_names = temp_coef_names,
+               coef_order = coef_order,
+               headers = make_headers(2,  c(rep('Export Rev. (Customs)',2))),
+               divisions_before = c(3),
+               rescale_factor = 1,
                custom_rows = list(""),
-               custom_row_placement = 18,
-               final_commands = "table = gsub('lx', 'x',table)",
-               notes = "Robust Standard Errors clustered at the firm level. All Regressions include firm and year FE.",
-               note_width = 1,
+               custom_row_placement = 17,
+               final_commands = paste0("table = gsub('lx|mx|nx', 'x',table);"),
+               notes = "Robust Standard Errors clustered at the firm level. All Regressions include firm, year, and country FE.",
+               note_width = .8,
+               dummy_version = dummy_version,
                output_path =  paste0(finished_output_dir, label, '.tex'), make_tex = F )
+  
 }
 
+
+ 
 
 
 
