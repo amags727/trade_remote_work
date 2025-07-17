@@ -44,7 +44,7 @@ function x = LCP(M,q,l,u,x0,display)
 %   Copyright (c) 2008, Yuval Tassa
 %   tassa at alice dot huji dot ac dot il
 
-tol            = 1.0e-12;
+tol            = 1.0e-8;
 mu             = 1e-3;
 mu_step        = 5;
 mu_min         = 1e-5;
