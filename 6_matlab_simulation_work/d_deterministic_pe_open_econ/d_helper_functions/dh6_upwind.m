@@ -19,6 +19,7 @@ for i = 1:num_state_vars
     If = optim_min.drift > 0;
 
     if  isequal(I_final, Ib | If) || all(Ib(:) | If(:))
+        I_final = (Ib | If);
         break
     else
         I_final = (Ib | If);

@@ -19,19 +19,21 @@ parfor i = 1:params.num_networks
     [v_out(:,i), optim_list{i}, ~,~,converged(i)] = inner_loop(v(:,i), false, local_params);
 end
 
-v = v_out; converged = all(converged);
-optim.L = zeros(params.len_Sigma,params.num_mkts, params.num_networks);
-optim.profit_w_actions = zeros(params.len_Sigma, params.num_networks);
-optim.ham = zeros(params.len_Sigma, params.num_networks);
-
-for i = 1:params.num_networks
+v = v_out; converged = true; 
+optim.L = zeros(params.len_Sigma(i),params.num_mkts, params.num_networks);
+optim.profit_w_actions = zeros(params.len_Sigma(i), params.num_networks);
+optim.ham = zeros(params.len_Sigma(i), params.num_networks);
+for i = 1:num_networks
     optim.L(:,:,i) = optim_list{i}.L;
     optim.drift(:,:,i) = optim_list{i}.drift;
     optim.profit_w_actions(:,i) = optim_list{i}.profit_w_actions;
     optim.ham(:,i) = optim_list{i}.ham;
+    if ~converged(i)
+        converged = false;
+    end
 end
 else 
-   [v, optim, z, best_alt,converged] = inner_loop(v,LCP_yn, params);
+    inner_loop(v,LCP_yn, params)
 end
 end
 

@@ -1,42 +1,8 @@
-function [v, optim, z, best_alt,converged] = dh9_run_inner_loop(v, LCP_yn, params)
+function [v, optim, z, best_alt,converged,Vchange] = dh9_run_inner_loop_old(v, LCP_yn, params)
 % Inputs:
 %   v       - initial value function
 %   LCP_yn  - flag for LCP version
 %   params  - struct containing all required parameters
-if ~LCP_yn
-v_out = zeros(params.len_Sigma, params.num_networks);
-converged =false(params.num_networks, 1);
-optim_list = cell(params.num_networks,1);
-parfor i = 1:params.num_networks
-    % update params to focus on network of choice
-    local_params = params;
-    local_params.num_networks = 1;
-    local_params.Sigma_mat = params.Sigma_mat(:,:,:,1);
-    local_params.networks = params.networks(i,:);
-    local_params.E_x = params.E_x(:,:,i);
-    local_params.E_pi = params.E_pi(:,:,i);
-    local_params.xi = params.xi(:,:,i);
-    [v_out(:,i), optim_list{i}, ~,~,converged(i)] = inner_loop(v(:,i), false, local_params);
-end
-
-v = v_out; converged = all(converged);
-optim.L = zeros(params.len_Sigma,params.num_mkts, params.num_networks);
-optim.profit_w_actions = zeros(params.len_Sigma, params.num_networks);
-optim.ham = zeros(params.len_Sigma, params.num_networks);
-
-for i = 1:params.num_networks
-    optim.L(:,:,i) = optim_list{i}.L;
-    optim.drift(:,:,i) = optim_list{i}.drift;
-    optim.profit_w_actions(:,i) = optim_list{i}.profit_w_actions;
-    optim.ham(:,i) = optim_list{i}.ham;
-end
-else 
-   [v, optim, z, best_alt,converged] = inner_loop(v,LCP_yn, params);
-end
-end
-
-function[v, optim, z, best_alt,converged] = inner_loop(v,LCP_yn, params)
-
 
     for n = 1:params.maxit
         % Step 1: Derivatives
@@ -64,8 +30,9 @@ function[v, optim, z, best_alt,converged] = inner_loop(v,LCP_yn, params)
             params.rho, params.Delta, params.networks, params.ec, params.rev_ec);
 
         Vchange = V - v; 
+
         % Step 6: Relaxation and convergence check
-        if ~LCP_yn; baseline = median(abs(Vchange)); else; baseline = median(abs(Vchange(:)));end
+        if ~LCP_yn; baseline = median(abs(Vchange(:,2))); else; baseline = median(abs(Vchange(:)));end
 
         problem_indices = abs(Vchange) > 1e2 *baseline & abs(Vchange) < 1e4*baseline;
         garbage_indices = abs(Vchange) > 1e4*baseline;
@@ -91,8 +58,8 @@ function[v, optim, z, best_alt,converged] = inner_loop(v,LCP_yn, params)
         dist(n) = max_val;
         if mod(n, 25) == 0
         fprintf('%g: max %g, 99th pctile %g, median %g\n',n,...
-            Vchange(max_index), prctile(abs(Vchange(:)), 99), ...
-            prctile(abs(Vchange(:)), 50));
+            Vchange(max_index), prctile(abs(Vchange(:,2)), 99), ...
+            prctile(abs(Vchange(:,2)), 50));
         end
         Vchange = abs(Vchange);
         if dist(n) < params.crit

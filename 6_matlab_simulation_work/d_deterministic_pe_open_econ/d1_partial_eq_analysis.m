@@ -59,10 +59,18 @@ xi = alpha_1*phi_d*E_x.^alpha_2;
 [v0,fc,ec] = dh3_set_v0_fc_ec(Sigma_mat,Sigma, D,Q,sigma_a,pi_bar, A_tilde,networks, fixed_cost_scaling,ec_multiplier, rho);
 
 % construct the base parameter structure 
-var_names = { 'I', 'num_state_vars', 'num_networks', 'd_Sigma','Sigma', 'Sigma_mat', 'Q', 'D',... 
+var_names = { 'I', 'num_state_vars', 'num_networks','num_mkts', 'len_Sigma', 'd_Sigma','Sigma', 'Sigma_mat', 'Q', 'D',... 
     'w', 'phi_d', 'alpha_1', 'alpha_2', 'sigma_a', 'networks', 'E_x', 'E_pi', ...
     'xi', 'fc', 'rho', 'Delta', 'ec', 'rev_ec', 'maxit', 'crit'};
 base_params = struct();for i = 1:length(var_names); name = var_names{i}; base_params.(name) = eval(name); end
+tic
+v_hjb_init = dh9_run_inner_loop(v0, false, base_params);
+toc
+tic
+v_hjb_init_old_way = dh9_run_inner_loop_old(v0, false, base_params);
+toc
+
+
 
 %% Solve Problem for Init Values 
 if exist('d_output/do1_init_v.mat', 'file') == 2
@@ -76,36 +84,3 @@ save('d_output/do1_init_v.mat', 'init_v')
  save('d_output/do2_base_graph.mat', 'graph_output', '-v7');
 end 
 
-%% Carry Out Graphical Analysis 
-parpool()
-% phi_d variation 
-params = base_params; phi_vec = linspace(.9,1.1,3); 
-params.crit = 1e-2; 
-graph_output = cell(1, 3);  % use cell array instead of struct array
-parfor i = 1:length(phi_vec)
- l_params = params;
- l_params.phi_d = phi_vec(i); 
- last_v = dh9_run_inner_loop(init_v.hjb,false, l_params);
- graph_output{i}= dh10_graph_output(last_v, l_params, false);
-end
-pt_1 = [repelem([.9;1;1.1],1000), repmat((1:1000)',3,1)];
-pt_2 = [graph_output{1}.output_path; graph_output{2}.output_path; graph_output{3}.output_path];
-phi_d_variations = [pt_1, pt_2];
-save('d_output/do3_phi_d_variations.mat', 'phi_d_variations', '-v7');
-
-% lambda variation 
-params = base_params; lambda_tilde_vec = lambda_tilde * [.9,1,1.1];
-params.crit = 1e-2;  graph_output = cell(1, 3);  
-parfor i = 1:length(lambda_tilde_vec)
-    l_lambda_tilde = lambda_tilde_vec(i);
-    l_params = params;
-    [l_params.Q,~,l_params.Sigma] = dh1_make_state_space(num_mkts,I, l_lambda_tilde, sigma_z, theta);
-    l_params.Sigma_mat = dh2_restructure_array(repmat(l_params.Sigma,1,1,num_networks),true, num_mkts);
-    l_params.d_Sigma =  (l_params.Sigma(len_Sigma, :) - l_params.Sigma(1,:))/(I-1);
-    last_v = dh9_run_inner_loop(zeros(len_Sigma, num_networks),false, l_params);
-    graph_output{i}= dh10_graph_output(last_v, l_params, false);
-end
-pt_1 = [repelem(lambda_tilde_vec',1000), repmat((1:1000)',3,1)];
-pt_2 = [graph_output{1}.output_path; graph_output{2}.output_path; graph_output{3}.output_path];
-lambda_variations = [pt_1, pt_2];
-save('d_output/do4_lambda_variations.mat', 'lambda_variations', '-v7');
