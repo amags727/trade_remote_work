@@ -20,16 +20,15 @@ if n > 100
 end
 
 % Set relaxation parameters
-if size(networks,1) == 1 & ~isequal(networks,[1,1] )
-    relax = 0;
+relax = .9 * ones(size(V));
+if steady_down
+    relax(problem_indices) = .99;
+    relax(garbage_indices) = .995;
 else
-    relax = .9 * ones(size(V));
-    if steady_down
-        relax(problem_indices) = .99;
-        relax(garbage_indices) = .995;
-    else
-        relax(problem_indices) = .995;
-        relax(garbage_indices) = .999;
-    end
+    relax(problem_indices) = .995;
+    relax(garbage_indices) = .999;
 end
+if size(networks,2) == 1 & networks ~= [1,0]
+    relax = 0
+
 v = relax .* v + (1 - relax) .* V;

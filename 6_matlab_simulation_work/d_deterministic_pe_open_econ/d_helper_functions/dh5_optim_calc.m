@@ -1,5 +1,7 @@
-function optim = dh5_optim_calc(dv, Sigma_mat, Q, D, w, phi_d, alpha_1, alpha_2, sigma_a, ...
-    networks, E_x, E_pi, xi, fc)
+function optim = dh5_optim_calc(dv, params)
+fields = fieldnames(params); % Get the field names of the structure
+for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
+
 % ==== setup  ===== 
 [num_networks, num_mkts] = size(networks);
 len_Sigma = size(dv, 1);

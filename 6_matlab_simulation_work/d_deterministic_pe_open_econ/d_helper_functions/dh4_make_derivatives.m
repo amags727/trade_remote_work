@@ -1,5 +1,7 @@
-function [dv_f, dv_b] = dh4_make_derivatives(v, I, num_state_vars, num_networks, d_Sigma)
-len_Sigma = size(v,1);
+function [dv_f, dv_b] = dh4_make_derivatives(v, params)
+fields = fieldnames(params); % Get the field names of the structure
+for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
+
 
 v_reshaped = reshape(v, [repmat(I, 1, num_state_vars), num_networks]);
     dv_f = zeros(len_Sigma, num_state_vars, num_networks); dv_b = dv_f;

@@ -1,4 +1,4 @@
-function [A_block,A_cell] = dh7_make_A_matrix(drift, d_Sigma)
+function A_block = dh7_make_A_matrix(drift, d_Sigma)
 
 %setup 
 [len_Sigma,num_state_vars, num_networks] = size(drift );
@@ -61,18 +61,30 @@ for network = 1:num_networks
 end
 
 % === Build sparse block-diagonal matrix manually ===
-total_size = len_Sigma * num_networks;
-all_row = [];
-all_col = [];
-all_val = [];
+if num_networks == 1
+    A_block = A_cell{1};
+else
+    total_size = len_Sigma * num_networks;
 
-for n = 1:num_networks
-    [i, j, v] = find(A_cell{n});
-    offset = (n - 1) * len_Sigma;
-    all_row = [all_row; i + offset];
-    all_col = [all_col; j + offset];
-    all_val = [all_val; v];
+    % Preallocate cell arrays to collect i, j, v triplets
+    row_cell = cell(num_networks, 1);
+    col_cell = cell(num_networks, 1);
+    val_cell = cell(num_networks, 1);
+
+    for n = 1:num_networks
+        [i, j, v] = find(A_cell{n});
+        offset = (n - 1) * len_Sigma;
+        row_cell{n} = i + offset;
+        col_cell{n} = j + offset;
+        val_cell{n} = v;
+    end
+
+    % Concatenate all in one go
+    all_row = vertcat(row_cell{:});
+    all_col = vertcat(col_cell{:});
+    all_val = vertcat(val_cell{:});
+
+    % Build sparse matrix
+    A_block = sparse(all_row, all_col, all_val, total_size, total_size);
 end
-
-A_block = sparse(all_row, all_col, all_val, total_size, total_size);
 end 

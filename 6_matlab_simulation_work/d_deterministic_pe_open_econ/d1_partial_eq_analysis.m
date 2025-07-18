@@ -62,14 +62,11 @@ xi = alpha_1*phi_d*E_x.^alpha_2;
 var_names = { 'I', 'num_state_vars', 'num_networks','num_mkts', 'len_Sigma', 'd_Sigma','Sigma', 'Sigma_mat', 'Q', 'D',... 
     'w', 'phi_d', 'alpha_1', 'alpha_2', 'sigma_a', 'networks', 'E_x', 'E_pi', ...
     'xi', 'fc', 'rho', 'Delta', 'ec', 'rev_ec', 'maxit', 'crit'};
+
 base_params = struct();for i = 1:length(var_names); name = var_names{i}; base_params.(name) = eval(name); end
 tic
-v_hjb_init = dh9_run_inner_loop(v0, false, base_params);
+v_hjb_init = dh8_HJB_inner_loop(v0,base_params);
 toc
-tic
-v_hjb_init_old_way = dh9_run_inner_loop_old(v0, false, base_params);
-toc
-
 
 
 %% Solve Problem for Init Values 
