@@ -8,15 +8,20 @@ dv_min_base = min(dv_b,dv_f); dv_max_base =  max(dv_b,dv_f);
 %=== make initial fwd/bkwd assignments by iteratively checking best / worst case scenarios===  
 Ib = false(size(dv_b)); If = Ib; I_final = Ib;
 for i = 1:num_state_vars
+
     % dv_max is worst case scenario for negative Sigma_dot
     dv_max = dv_max_base; dv_max(Ib) = dv_b(Ib); dv_max(If) = dv_f(If);
-    optim_max = dh5_optim_calc(dv_max, params);
-    Ib = optim_max.drift <= 0;
+    if num_networks == 1; int_indices = find(any(~(Ib | If),2)); else; int_indices = find(any(any(~(Ib | If), 2),3)); end
+    upwind_params = gen_upwind_params(params, int_indices);
+    optim_max = dh5_optim_calc(dv_max(int_indices, :,:), upwind_params);
+    Ib(int_indices, :,:) = optim_max.drift <= 0;
 
     %dv_min is worse case scenario for postive Sigma_dot
     dv_min = dv_min_base; dv_min(Ib) = dv_b(Ib); dv_min(If) = dv_f(If);
-    optim_min = dh5_optim_calc(dv_min,params);
-    If = optim_min.drift > 0;
+    if num_networks == 1; int_indices = find(any(~(Ib | If),2)); else; int_indices = find(any(any(~(Ib | If), 2),3)); end
+    upwind_params = gen_upwind_params(params, int_indices);
+    optim_min = dh5_optim_calc(dv_min(int_indices, :,:), upwind_params);
+    If(int_indices, :,:) = optim_min.drift > 0;
 
     if  isequal(I_final, Ib | If) || all(Ib(:) | If(:))
         I_final = (Ib | If);
@@ -65,3 +70,12 @@ end
 
 end
 
+function upwind_params= gen_upwind_params(params, int_indices)
+upwind_params = params;
+upwind_params.len_Sigma = length(int_indices);
+upwind_params.Sigma = params.Sigma(int_indices, :);
+upwind_params.Sigma_mat = params.Sigma_mat(:,:,int_indices,:);
+upwind_params.E_x = params.E_x(int_indices, :,:);
+upwind_params.E_pi = params.E_pi(int_indices, :,:);
+upwind_params.xi = params.xi(int_indices, :,:);
+end

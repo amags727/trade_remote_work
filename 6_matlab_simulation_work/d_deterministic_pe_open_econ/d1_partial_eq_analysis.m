@@ -1,10 +1,10 @@
 clear all; close all; clc;
-addpath(genpath('../b_helper_functions'))
+addpath(genpath('../b_helper_functions'));
 addpath(genpath('d_helper_functions'))
 addpath(genpath('d_output'))
 
 %% == Set key parameters ==
-I = 20;
+I = 25;
 num_mkts = 2;
 networks = [1,0;1,1]; %networks = [0,0;1,0;1,1]; %networks = dec2bin(0:(2^num_mkts - 1)) - '0';
 num_networks = size(networks,1);
@@ -64,10 +64,11 @@ var_names = { 'I', 'num_state_vars', 'num_networks','num_mkts', 'len_Sigma', 'd_
     'w', 'phi_d', 'alpha_1', 'alpha_2', 'sigma_a', 'networks', 'E_x', 'E_pi', ...
     'xi', 'fc', 'rho', 'Delta', 'ec', 'rev_ec', 'maxit', 'crit', 'adjacency_matrix'};
 
+
 base_params = struct();for i = 1:length(var_names); name = var_names{i}; base_params.(name) = eval(name); end
 tic
-v_hjb_init = dh8_HJB_inner_loop(v0,base_params);
-v_LCP_init = dh9_LCP_inner_loop(v_hjb_init,base_params);
+v_hjb_init = dh9_HJB_inner_loop(v0,base_params);
+v_LCP_init = dh10_LCP_inner_loop(v_hjb_init, base_params);
 toc
 
 

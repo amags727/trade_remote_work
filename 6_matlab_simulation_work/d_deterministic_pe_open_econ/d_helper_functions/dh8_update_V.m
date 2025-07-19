@@ -13,8 +13,8 @@ garbage_indices  = Vchange > 1e4 * baseline;
 
 % Check for steady downward trend if applicable
 steady_down = false;
-if n > 100
-    idx = (n-99):(n-1);  % 99 steps: from n-99 to n-1
+if n > 50
+    idx = (n-49):(n-1);  % 99 steps: from n-99 to n-1
     steady_down = all(diff(dist(idx)) < 0);
 end
 
