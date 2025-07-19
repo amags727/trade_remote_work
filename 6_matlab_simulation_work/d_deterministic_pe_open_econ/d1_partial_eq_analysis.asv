@@ -49,7 +49,6 @@ len_Sigma = size(Sigma,1);
 d_Sigma =  (Sigma(len_Sigma, :) - Sigma(1,:))/(I-1);
 diag_indeces = find(ismember(find(triu(true(num_mkts), 0)),1:num_mkts+1:num_mkts^2));
 adjacency_matrix = dh11_make_adjacency_matrix(len_Sigma,num_state_vars,I) ;
-
 % Construct Expected Quality / Quantity / Profits 
 A_tilde  = dh0_gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
 E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);

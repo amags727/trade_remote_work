@@ -1,4 +1,4 @@
-function [Vchange, v] = dh8_update_V(v,V,dist, params)
+function [Vchange, v,int_indices] = dh8_update_V(v,V,dist, params)
 
 % unpack params 
 fields = fieldnames(params); % Get the field names of the structure
@@ -19,7 +19,7 @@ if n > 100
     steady_down = all(diff(dist(idx)) < 0);
 end
 
-% Set relaxation parameters
+% Set relaxation parameters and update v
 if size(networks,1) == 1 & ~isequal(networks,[1,1] )
     relax = 0;
 else
@@ -33,3 +33,7 @@ else
     end
 end
 v = relax .* v + (1 - relax) .* V;
+
+% Determine int indices for next round 
+int_indices = find(Vchange > 1e-4);
+int_indices = setdiff(unique(reshape(adjacency_matrix(int_indices,:),[],1)),0);
