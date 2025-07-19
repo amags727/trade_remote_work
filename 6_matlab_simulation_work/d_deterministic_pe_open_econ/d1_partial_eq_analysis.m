@@ -67,6 +67,7 @@ var_names = { 'I', 'num_state_vars', 'num_networks','num_mkts', 'len_Sigma', 'd_
 base_params = struct();for i = 1:length(var_names); name = var_names{i}; base_params.(name) = eval(name); end
 tic
 v_hjb_init = dh8_HJB_inner_loop(v0,base_params);
+v_LCP_init = dh9_LCP_inner_loop(v_hjb_init,base_params);
 toc
 
 
@@ -95,6 +96,6 @@ v_hjb_init = dh9_run_inner_loop(v0, false, base_params);
 init_v = struct('hjb', v_hjb_init, 'lcp', v_lcp_init);
 save('d_output/do1_init_v.mat', 'init_v')
 [graph_output] = dh10_graph_output(init_v.lcp, base_params,false);
- save('d_output/do2_base_graph.mat', 'graph_output', '-v7');
+save('d_output/do2_base_graph.mat', 'graph_output', '-v7');
 end 
 

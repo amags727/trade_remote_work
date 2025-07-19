@@ -54,18 +54,9 @@ for i = 1:num_networks
 
         % update v; and generate indices to check next time
         if n ==1; dist =0; end; int_indices_old = int_indices;
-        [Vchange, v,int_indices] = dh8_update_V(v,V,dist, local_params);
-        if mod(n,10) == 0; int_indices = 1:len_Sigma; end
+        [v,int_indices, dist] = dh8_update_V(v,V,local_params, dist, n);
+       
 
-
-        % report progress
-        if mod(n, 25) == 0
-            fprintf('HJB: %g: max %g, 99th pctile %g, median %g\n',n,...
-                max(Vchange), prctile(Vchange, 99), prctile(Vchange, 50));
-        end
-
-        % check for convergence
-        dist(n) = max(Vchange);
         if dist(n) < crit
             if length(int_indices_old) == len_Sigma
                 fprintf('HJB Converged, Iteration = %g\n', n);

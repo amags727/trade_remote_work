@@ -1,12 +1,11 @@
-function [v,int_indices, dist] = dh8_update_V(v,V,params, dist, n)
+function [Vchange, v,int_indices, dist] = dh8_update_V(v,V,dist, params)
 
 % unpack params 
 fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
 Vchange = abs(V - v);
 baseline = median(Vchange(:));
-dist(n) = max(Vchange(:));
-
+n = length(dist);
 % Classify indices
 problem_indices  = Vchange > 1e2 * baseline & Vchange < 1e4 * baseline;
 garbage_indices  = Vchange > 1e4 * baseline;
@@ -44,5 +43,5 @@ if mod(n, 25) == 0
     mode = "HJB";
     if size(V,2) > 1, mode = "LCP"; end
     fprintf('%s: %g: max %g, 99th pctile %g, median %g\n', ...
-        mode, n, max(Vchange(:)), prctile(Vchange(:),99), prctile(Vchange(:),50));
+        mode, n, max(Vchange), prctile(Vchange,99), prctile(Vchange,50));
 end

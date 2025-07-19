@@ -48,7 +48,7 @@ for network = 1:num_networks
 
         l_params = params;
         l_params.networks = networks(network,:);
-        l_params.num_networks = 1;
+        l_params.num_networks = 
         l_params.Sigma_mat = repmat(params.Sigma_mat(:, :, key_rows,network), 1, 1, num_combos);
         l_params.E_x = repmat(params.E_x(key_rows, :,network), num_combos,1);
         l_params.E_pi = repmat(params.E_pi(key_rows, :, network), num_combos,1);
