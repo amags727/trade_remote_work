@@ -34,7 +34,7 @@ for n = 1:maxit
     A_matrix = dh7_make_A_matrix(optim.drift, d_Sigma);
 
     % Use LCP to update value function guess
-    [V,z,best_alt] = actual_lcp_wrapper(v, optim.profit_w_actions, A_matrix, params);
+    [V,z,best_alt] = actual_lcp_wrapper(v, optim.profit_w_actions, A_matrix, params, int_indices);
     
     % actually update the value function and set new int indices 
     if n ==1; dist =0; end; int_indices_old = int_indices;
@@ -62,11 +62,11 @@ upwind_params.E_pi = params.E_pi(int_indices, :,:);
 upwind_params.xi = params.xi(int_indices, :,:);
 end
 
-function [V,z,best_alt] = actual_lcp_wrapper(v, profit, A_matrix, params)
-
+function [V,z,best_alt] = actual_lcp_wrapper(v, profit, A_matrix, params, int_indices)
 % unpack params
 fields = fieldnames(params);
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
+int_indices = [int_indices, int_indices + len_Sigma]; 
 
 B = (rho + 1/Delta)*speye(len_Sigma.*num_networks) - A_matrix;
 pi_stacked = reshape(profit, [],1);
@@ -85,6 +85,7 @@ z0 = v_stacked - vstar_stacked;
 l = zeros(size(v_stacked));
 u = Inf*ones(size(v_stacked));
 z = pathlcp(B,q,l,u,z0); %LCP(B,q,l,u,z0,0);
+
 % LCP_error = max(abs(z.*(B*z + q)));
 % if LCP_error > 10^(-5)
 %     z = LCP(B,q,l,u,z,0);

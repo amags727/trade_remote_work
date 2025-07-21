@@ -2,14 +2,20 @@ clear all; close all;
 addpath(genpath('f_helper_functions'))
 
 % set baseline params 
+parpool();
 params = fh1_import_fixed_params(1);
+tic
 base_output = fh6_find_ss(params, 1,1);
+toc
 
 
 % look at phi results 
 phi_vec = linspace(0,5,100);
 results = zeros(length(phi_vec),10);
+
 results(:,1) = phi_vec;
+
+
 
 if isempty(gcp('nocreate'))
     parpool; % uses default settings; you can specify workers if needed

@@ -1,4 +1,4 @@
-function output = fh5_find_value_func(num_firms,A_tilde_in, params)
+function output = fh5_find_value_func(num_firms,A_tilde_in, params, v_0)
 % A_tilde_in = our guess of steady state quality 
 % num_firms = our guess of the current number of firms in mkt
 
@@ -84,8 +84,15 @@ for n=1:maxit
     end
 end
 
-% output results 
+%% === output results ====
 abs_entrance_v = abs(v(I));
-vars = {'v', 'optimal', 'abs_entrance_v','E_x','converged'};
+
+drift = optimal.drift;
+i = find(drift > 0, 1, 'last');
+w = drift(i) / (drift(i) - drift(i+1));
+A_tilde_out = (1 - w) * A_tilde(i) + w * A_tilde(i+1);
+miss_value = sum([abs_entrance_v, (A_tilde_out - A_tilde_in)*25].^2);
+
+vars = {'v', 'optimal', 'A_tilde_out','miss_value','converged'};
 output = struct();for i = 1:length(vars); name = vars{i}; output.(name) = eval(name); end
 end
