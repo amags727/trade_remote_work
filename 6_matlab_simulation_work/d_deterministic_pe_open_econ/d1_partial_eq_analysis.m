@@ -30,6 +30,11 @@ for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
 v_hjb_init = dh9_HJB_inner_loop(v0,params);
 output  = dh10_LCP_inner_loop(v_hjb_init, params);
 
+fprintf('v_end - ec = %g\n',output.v(len_Sigma,1)-ec(1));
+fprintf('min network: %g\nmax network: %g\n',...
+    min(output.preferred_network(:,1)),...
+    max(output.preferred_network(:,1)));
+
 %% == Symmetric setup ===
 networks = [1,0,1,1];
 

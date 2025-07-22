@@ -1,4 +1,4 @@
-function [v, optim, z, best_alt,converged] = dh10_LCP_inner_loop(v, params)
+function output = dh10_LCP_inner_loop(v, params)
 
 % unpack params
 fields = fieldnames(params); % Get the field names of the structure
