@@ -13,8 +13,8 @@ garbage_indices  = Vchange > 1e4 * baseline;
 
 % Check for steady downward trend if applicable
 steady_down = false;
-if n > 50
-    idx = (n-49):(n-1);  % 99 steps: from n-99 to n-1
+if n > 100
+    idx = (n-99):(n-1);  % 99 steps: from n-99 to n-1
     steady_down = all(diff(dist(idx)) < 0);
 end
 
@@ -43,6 +43,6 @@ if mod(n,10) == 0; int_indices = 1:len_Sigma; end
 if mod(n, 25) == 0
     mode = "HJB";
     if size(V,2) > 1, mode = "LCP"; end
-    fprintf('%s: %g: max %g, 99th pctile %g, median %g\n', ...
-        mode, n, max(Vchange(:)), prctile(Vchange(:),99), prctile(Vchange(:),50));
+   % fprintf('%s: %g: max %g, 99th pctile %g, median %g\n', ...
+    %    mode, n, max(Vchange(:)), prctile(Vchange(:),99), prctile(Vchange(:),50));
 end

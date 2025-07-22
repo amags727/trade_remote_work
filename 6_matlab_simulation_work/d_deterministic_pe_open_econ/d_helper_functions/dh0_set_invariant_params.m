@@ -13,7 +13,7 @@ w_g = 1; % wage for production workers
 gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
 initial_demand_assumption = 20;
-tau = 1.2; % iceberg trade costs 
+tau = 1.0; % iceberg trade costs 
 foreign_cost_scaling = 1.1; %fc * fixed_cost_scaling = foreign market fixed costs 
 
 %data parameters 
@@ -21,7 +21,7 @@ w = 1; % data worker wage
 phi_d = 1; % data productivity 
 alpha_1 = .5;  % cobb douglas coefficient on data labor 
 alpha_2 = .5; % cobb douglas coefficient on raw data 
-top_bottom_quality_ratio = 2; % how much data helps improve quality 
+top_bottom_quality_ratio = 3; % how much data helps improve quality 
 sigma_z = repmat(1.1,1,num_mkts); % variance of random component of z
 theta = .9; % mean reversion parameter of z (closer to one faster mean reversion)
 lambda_tilde = .5; % correlation coefficient between mkts 
@@ -30,8 +30,8 @@ sigma_a = repmat(1.1,1,num_mkts); % sd of noise term
 % Simulation Parameters
 rho = 0.05; %discount rate
 Delta = 1000; % 1/Delta = time_step
-crit = 10^(-4); % acceptable value for HJB / LCP convergence  
-maxit = 1e5;
+crit = 1e-4; % acceptable value for HJB / LCP convergence  
+maxit = 1e4;
 
 % Gen state space 
 [Q,D,Sigma] = make_state_space(num_mkts,I, lambda_tilde, sigma_z, theta);
@@ -50,7 +50,7 @@ A_tilde  = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
     Sigma, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier, num_mkts);
 
 var_names = {'I', 'num_mkts', 'num_networks', 'phi_g', 'foreign_cost_scaling', ...
-    'ec_multiplier', 'w_g', 'gamma', 'gamma_tilde', 'w', 'phi_d', 'alpha_1', 'alpha_2', ...
+    'w_g', 'gamma', 'gamma_tilde', 'w', 'phi_d', 'alpha_1', 'alpha_2', ...
     'top_bottom_quality_ratio', 'sigma_z', 'theta', 'lambda_tilde', 'rho', ...
     'Delta', 'crit', 'maxit', 'Q', 'D', 'Sigma', 'Sigma_mat', ...
     'num_state_vars', 'len_Sigma', 'd_Sigma', 'diag_indeces', 'A_tilde', ...

@@ -27,46 +27,35 @@ v0 = zeros(len_Sigma, num_networks);
 pe_vars = {'x_scale_factor','networks' 'fc', 'ec', 'E_x', 'E_pi', 'xi'};
 for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
 
+
 v_hjb_init = dh9_HJB_inner_loop(v0,params);
 output  = dh10_LCP_inner_loop(v_hjb_init, params);
 
 %% == Symmetric setup ===
-networks = [1,0,1,1];
+networks = [1,0;1,1];
+fc = fc_base *[1,foreign_cost_scaling];
+ec = ec_base *[1,foreign_cost_scaling];
+y = 200;
 
-num_firms_0 = [.5, .5];
-A_tilde_in_0 = sum(A_tilde(no_data_ss_indices,1).*no_data_ss_weights);
-A_tilde_in_0 = [A_tilde_in_0, A_tilde_in_0];
+P_0 = 1;
 
 
-networks = [1,0;1,1]; num_firms_0 = [.5,.5]; y = 20;
-A_tilde_in_0 = sum(A_tilde(no_data_ss_indices,1).*no_data_ss_weights);
-A_tilde_in_0 = [A_tilde_in_0, A_tilde_in_0];
-A_tilde_in = A_tilde_in_0; num_firms =num_firms_0;
-
+P= P_0;
 p = gamma_tilde*w_g /phi_g *[1, tau];
-P = (num_firms(1) * A_tilde_in(1) * p(1)^(1 - gamma) +...
-     num_firms(2) * A_tilde_in(2) * p(2)^(1 - gamma))^(1 / (1 - gamma));
-
-
-
-x_bar = x_scale_factor*phi_g^gamma; % base demand 
+x_bar = y*(gamma_tilde*p).^(-gamma) / (P^(1-gamma));
 pi_bar = x_bar*w_g*phi_g^-1*(gamma-1)^-1; % base profits 
 
 E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
 E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits (not accounting for fixed costs; data labor)
 xi = alpha_1*phi_d*E_x.^alpha_2;
-% Construct V0 fc/ entry costs 
-[v0,fc,ec] = dh3_set_v0_fc_ec(Sigma_mat,Sigma, D,Q,sigma_a,pi_bar, A_tilde,networks, fixed_cost_scaling,ec_multiplier, rho);
 
-% construct the base parameter structure 
-var_names = { 'I', 'num_state_vars', 'num_networks','num_mkts', 'len_Sigma', 'd_Sigma','Sigma', 'Sigma_mat', 'Q', 'D',... 
-    'w', 'phi_d', 'alpha_1', 'alpha_2', 'sigma_a', 'networks', 'E_x', 'E_pi', ...
-    'xi', 'fc', 'rho', 'Delta', 'ec', 'rev_ec', 'maxit', 'crit', 'adjacency_matrix'};
-base_params = params;for i = 1:length(var_names); name = var_names{i}; base_params.(name) = eval(name); end
+pe_vars = {'networks' 'fc', 'ec', 'E_x', 'E_pi', 'xi'};
+for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
 
 
-v_hjb_init = dh9_HJB_inner_loop(v0,base_params);
-output  = dh10_LCP_inner_loop(v_hjb_init, base_params);
+v_hjb_init = dh9_HJB_inner_loop(zeros(len_Sigma, num_networks),params);
+output  = dh10_LCP_inner_loop(zeros(len_Sigma, num_networks), params);
+
 
 
 
