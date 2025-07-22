@@ -1,4 +1,4 @@
-function [graph_output] = dh10_graph_output(v, params, start_w_HJB)
+function [graph_output] = find_SS(v, params, start_w_HJB)
 
 % Solve for the Value function 
 if start_w_HJB 
