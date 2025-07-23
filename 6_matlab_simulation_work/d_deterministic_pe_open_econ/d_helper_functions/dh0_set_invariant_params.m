@@ -30,8 +30,8 @@ sigma_a = repmat(1.1,1,num_mkts); % sd of noise term
 % Simulation Parameters
 rho = 0.05; %discount rate
 Delta = 1000; % 1/Delta = time_step
-crit = 10^(-4); % acceptable value for HJB / LCP convergence  
-maxit = 1e5;
+crit = 1e-6; % acceptable value for HJB / LCP convergence  
+maxit = 1e4;
 
 % Gen state space 
 [Q,D,Sigma] = make_state_space(num_mkts,I, lambda_tilde, sigma_z, theta);

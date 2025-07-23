@@ -38,7 +38,6 @@ int_indices = find(any(Vchange > 1e-4,2));
 int_indices = setdiff(unique(reshape(adjacency_matrix(int_indices,:),[],1)),0);
 if mod(n,10) == 0; int_indices = 1:len_Sigma; end
 
-
 % report progress
 if mod(n, 25) == 0
     mode = "HJB";

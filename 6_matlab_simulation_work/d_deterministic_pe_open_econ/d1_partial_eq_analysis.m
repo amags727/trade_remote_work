@@ -2,7 +2,7 @@ clear all; close all; clc;
 addpath(genpath('../b_helper_functions'));
 addpath(genpath('d_helper_functions'))
 addpath(genpath('d_output'))
-
+dbstop if error
 % set invariant parameters 
 params = dh0_set_invariant_params();
 
@@ -27,13 +27,16 @@ v0 = zeros(len_Sigma, num_networks);
 pe_vars = {'x_scale_factor','networks' 'fc', 'ec', 'E_x', 'E_pi', 'xi'};
 for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
 
-v_hjb_init = dh9_HJB_inner_loop(v0,params);
-output  = dh10_LCP_inner_loop(v_hjb_init, params);
+[v_hjb_init,optim] = dh9_HJB_inner_loop(v0,params);
+[max_vale,idx] = max(rho*v_hjb_init - optim.ham);
 
-fprintf('v_end - ec = %g\n',output.v(len_Sigma,1)-ec(1));
-fprintf('min network: %g\nmax network: %g\n',...
-    min(output.preferred_network(:,1)),...
-    max(output.preferred_network(:,1)));
+%dh9_HJB_inner_loop(v_hjb_init,params)
+
+% output  = dh10_LCP_inner_loop(v_hjb_init, params);
+% fprintf('v_end - ec = %g\n',output.v(len_Sigma,1)-ec(1));
+% fprintf('min network: %g\nmax network: %g\n',...
+%     min(output.preferred_network(:,1)),...
+%     max(output.preferred_network(:,1)));
 
 %% == Symmetric setup ===
 networks = [1,0,1,1];
