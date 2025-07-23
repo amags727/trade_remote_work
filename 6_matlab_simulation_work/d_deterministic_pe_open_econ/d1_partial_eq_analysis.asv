@@ -24,16 +24,9 @@ E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits 
 xi = alpha_1*phi_d*E_x.^alpha_2;
 v0 = zeros(len_Sigma, num_networks);
 
-pe_vars = {'x_scale_factor','networks' 'fc', 'ec', 'E_x', 'E_pi', 'xi'};
-for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
+pe_vars = {'x_scale_factor', 'fc', 'ec', 'E_x', 'E_pi', 'xi'};
+for i = 1:length(pe_vars); name = pe_vars{i}; base_params.(name) = eval(name); end
 
-v_hjb_init = dh9_HJB_inner_loop(v0,params);
-output  = dh10_LCP_inner_loop(v_hjb_init, params);
-
-fprintf('v_end - ec = %g\n',output.v(len_Sigma,1)-ec(1));
-fprintf('min network: %g\nmax network: %g\n',...
-    min(output.preferred_network(:,1)),...
-    max(output.preferred_network(:,1)));
 
 %% == Symmetric setup ===
 networks = [1,0,1,1];

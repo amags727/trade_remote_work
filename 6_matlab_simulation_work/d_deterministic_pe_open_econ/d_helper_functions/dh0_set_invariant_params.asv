@@ -1,4 +1,4 @@
-function [params] = dh0_set_invariant_params()
+function params = dh0_set_invariant_params()
 
 % base variables 
 I = 20;
@@ -7,14 +7,14 @@ num_networks = 2;
 
 % production parameters 
 phi_g = 1;
+fixed_cost_scaling = 1.1; %fc * fixed_cost_scaling = foreign market fixed costs 
 ec_multiplier = 1.6; % fc * ec_multiplier = ec 
 rev_ec = repmat(5,1, num_mkts); % exit costs from market 
 w_g = 1; % wage for production workers
 gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
 initial_demand_assumption = 20;
-tau = 1.2; % iceberg trade costs 
-foreign_cost_scaling = 1.1; %fc * fixed_cost_scaling = foreign market fixed costs 
+tau = 1.2;
 
 %data parameters 
 w = 1; % data worker wage
@@ -33,6 +33,7 @@ Delta = 1000; % 1/Delta = time_step
 crit = 10^(-4); % acceptable value for HJB / LCP convergence  
 maxit = 1e5;
 
+
 % Gen state space 
 [Q,D,Sigma] = make_state_space(num_mkts,I, lambda_tilde, sigma_z, theta);
 Sigma_mat = dh2_restructure_array(repmat(Sigma,1,1,num_networks),true, num_mkts);
@@ -46,15 +47,15 @@ adjacency_matrix = make_adjacency_matrix(len_Sigma,num_state_vars,I) ;
 A_tilde  = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
 
 % Gen FC / entry cost base 
-[fc_base,ec_base, no_data_ss_indices, no_data_ss_weights] = set_fc_ec(sigma_a, ...
-    Sigma, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier, num_mkts);
 
-var_names = {'I', 'num_mkts', 'num_networks', 'phi_g', 'foreign_cost_scaling', ...
+
+
+var_names = {'I', 'num_mkts', 'num_networks', 'phi_g', 'fixed_cost_scaling', ...
     'ec_multiplier', 'w_g', 'gamma', 'gamma_tilde', 'w', 'phi_d', 'alpha_1', 'alpha_2', ...
     'top_bottom_quality_ratio', 'sigma_z', 'theta', 'lambda_tilde', 'rho', ...
     'Delta', 'crit', 'maxit', 'Q', 'D', 'Sigma', 'Sigma_mat', ...
     'num_state_vars', 'len_Sigma', 'd_Sigma', 'diag_indeces', 'A_tilde', ...
-    'adjacency_matrix', 'sigma_a','tau', 'rev_ec','fc_base', 'ec_base', 'no_data_ss_indices', 'no_data_ss_weights'};
+    'adjacency_matrix', 'sigma_a', 'rev_ec'};
 params = struct();for i = 1:length(var_names); name = var_names{i}; params.(name) = eval(name); end
 end
 
@@ -130,8 +131,8 @@ end
 
 
 
-function [fc_base,ec_base, indices, weights] = set_fc_ec(sigma_a,Sigma, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier, ...
-    num_mkts) 
+function [fc_base,ec_base] = set_fc_ec(sigma_a, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier) dh3_set_v0_fc_ec(Sigma_mat_UB,Sigma, D,Q,sigma_a,...
+    pi_bar, A_tilde,networks, fixed_cost_scaling,ec_multiplier, rho)
 
 % find the steady state value of Sigma given no data purchases  
 R = diag([sigma_a(1)^(-2), 0]);
@@ -144,9 +145,33 @@ if num_mkts ~= 2; disp('hard coding failure back up'); return; else; Sigma_ss = 
 % base fixed costs guarantee zero profit in steady state given assumed
 % initial demand 
 pi_bar = initial_demand_assumption .* w_g*phi_g^-1*(gamma-1)^-1;
-pi_ss = pi_bar*sum(A_tilde(indices,1).*weights);
+pi_ss = sum(A_tilde(indices,1).*weights);
 fc_base = pi_ss;
 ec_base = ec_multiplier*fc_base;
 
 end
 
+
+[~,num_mkts,len_Sigma, num_networks] = size(Sigma_mat);
+v0 = zeros(len_Sigma, size(networks,1));
+for i = 0:num_networks
+    if i == 0
+        R = diag([sigma_a(1)^(-2), 0]);
+    else
+        R = diag(sigma_a.^(-2).*networks(i,:));
+    end
+    Sigma_ss_guess = squeeze(Sigma_mat(:,:, len_Sigma, 1));
+    f = @(S) reshape(D*S + S*D' + Q - S*R*S, [], 1);
+    options = optimoptions('fsolve', 'Display', 'off', 'FunctionTolerance', 1e-8);
+    Sigma_ss = reshape(fsolve(f, Sigma_ss_guess, options),[],num_mkts^2) ;
+    [~, init_index] = min(sum((Sigma - Sigma_ss([1,2,4])).^2, 2));
+
+    if i == 0
+        fc = pi_bar(1)*A_tilde(init_index,1);
+        fc = [fc, repmat(fc*fixed_cost_scaling,1,num_mkts-1)];
+        ec = fc*ec_multiplier;
+    else
+        v0(:,i) = sum((pi_bar.*A_tilde(init_index,:) - fc).*networks(i,:))/ rho;
+    end
+end
+end
