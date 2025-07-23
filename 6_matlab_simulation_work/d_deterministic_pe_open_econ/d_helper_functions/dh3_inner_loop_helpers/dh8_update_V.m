@@ -3,6 +3,7 @@ function [v,int_indices, dist] = dh8_update_V(v,V,params, dist, n)
 % unpack params 
 fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
+[~,max_idx] = max(abs(V(:)-v(:))); max_change = V(max_idx) - v(max_idx);
 Vchange = abs(V - v);
 baseline = median(Vchange(:));
 dist(n) = max(Vchange(:));
@@ -44,5 +45,5 @@ if mod(n, 25) == 0
     mode = "HJB";
     if size(V,2) > 1, mode = "LCP"; end
     fprintf('%s: %g: max %g, 99th pctile %g, median %g\n', ...
-        mode, n, max(Vchange(:)), prctile(Vchange(:),99), prctile(Vchange(:),50));
+        mode, n, max_change, prctile(Vchange(:),99), prctile(Vchange(:),50));
 end
