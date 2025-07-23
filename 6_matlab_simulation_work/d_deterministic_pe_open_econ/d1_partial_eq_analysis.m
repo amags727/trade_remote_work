@@ -2,6 +2,7 @@ clear all; close all; clc;
 addpath(genpath('../b_helper_functions'));
 addpath(genpath('d_helper_functions'))
 addpath(genpath('d_output'))
+dbstop if error
 
 % set invariant parameters 
 params = dh0_set_invariant_params();
@@ -17,7 +18,6 @@ fc = fc_base *[1,foreign_cost_scaling];
 ec = ec_base *[1,foreign_cost_scaling];
 x_bar = x_scale_factor*phi_g^gamma; % base demand 
 pi_bar = x_bar*w_g*phi_g^-1*(gamma-1)^-1; % base profits 
-
 
 E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
 E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits (not accounting for fixed costs; data labor)
