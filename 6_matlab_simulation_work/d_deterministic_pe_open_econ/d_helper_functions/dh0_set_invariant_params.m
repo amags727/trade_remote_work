@@ -46,15 +46,16 @@ adjacency_matrix = make_adjacency_matrix(len_Sigma,num_state_vars,I) ;
 A_tilde  = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
 
 % Gen FC / entry cost base 
-[fc_base,ec_base, no_data_ss_indices, no_data_ss_weights] = set_fc_ec(sigma_a, ...
-    Sigma, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier, num_mkts);
+fc_base = 8.2105; ec_base = fc_base*ec_multiplier;
+%[fc_base,ec_base, no_data_ss_indices, no_data_ss_weights] = set_fc_ec(sigma_a, ...
+ %   Sigma, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier, num_mkts);
 
 var_names = {'I', 'num_mkts', 'num_networks', 'phi_g', 'foreign_cost_scaling', ...
     'ec_multiplier', 'w_g', 'gamma', 'gamma_tilde', 'w', 'phi_d', 'alpha_1', 'alpha_2', ...
     'top_bottom_quality_ratio', 'sigma_z', 'theta', 'lambda_tilde', 'rho', ...
     'Delta', 'crit', 'maxit', 'Q', 'D', 'Sigma', 'Sigma_mat', ...
     'num_state_vars', 'len_Sigma', 'd_Sigma', 'diag_indeces', 'A_tilde', ...
-    'adjacency_matrix', 'sigma_a','tau', 'rev_ec','fc_base', 'ec_base', 'no_data_ss_indices', 'no_data_ss_weights'};
+    'adjacency_matrix', 'sigma_a','tau', 'rev_ec','fc_base', 'ec_base'};
 params = struct();for i = 1:length(var_names); name = var_names{i}; params.(name) = eval(name); end
 end
 
@@ -103,7 +104,7 @@ D =  diag(repmat(-theta,1,num_mkts)); % mean reversion parameter term
 
 %% Construct standard version of Sigma 
 Sigma_ub = fake_layp(D, Q); % sets drift of Sigma to zero when we're in no markets
-Sigma_lb = 1e-2;
+Sigma_lb = 1e-1;
 state_space_ub =  Sigma_ub(triu(true(size(Sigma_ub)), 0));
 vecs = arrayfun(@(x) linspace(Sigma_lb, x, I), state_space_ub, 'UniformOutput', false);
 [nvecs{1:numel(vecs)}] = ndgrid(vecs{:});

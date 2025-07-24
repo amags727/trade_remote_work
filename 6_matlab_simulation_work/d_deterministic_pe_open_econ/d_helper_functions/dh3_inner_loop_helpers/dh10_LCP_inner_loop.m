@@ -63,9 +63,10 @@ Sigma_t = Sigma(len_Sigma,:); network_t = 1; drift_mag = Inf; drift_crit = 1e-3;
 
 while drift_mag > drift_crit
     drift_t = sum(optim.drift(indices,:,network_t).*weights);
-    drift_mag = sum(drift_t.^2);
+    drift_mag = sum(drift_t(:,[1,3]).^2);
 
     Sigma_t = Sigma_t + drift_t*1/Delta;
+    disp(Sigma_t)
     [indices, weights] = dh4_interp_box( Sigma_t, Sigma, 2);
     best_score = -inf; best_network = 1; pref_base = [preferred_network(indices,network_t),weights];
     for network = 1:num_networks
