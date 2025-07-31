@@ -2,6 +2,7 @@ clear all; close all; clc;
 addpath(genpath('../b_helper_functions'));
 addpath(genpath('d_helper_functions'))
 addpath(genpath('d_output'))
+dbstop if error
 
 % set invariant parameters 
 params = dh0_set_invariant_params();
@@ -18,7 +19,6 @@ ec = ec_base *[1,foreign_cost_scaling];
 x_bar = x_scale_factor*phi_g^gamma; % base demand 
 pi_bar = x_bar*w_g*phi_g^-1*(gamma-1)^-1; % base profits 
 
-
 E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
 E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits (not accounting for fixed costs; data labor)
 xi = alpha_1*phi_d*E_x.^alpha_2;
@@ -30,6 +30,11 @@ for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
 
 v_hjb_init = dh9_HJB_inner_loop(v0,params);
 output  = dh10_LCP_inner_loop(v_hjb_init, params);
+
+fprintf('v_end - ec = %g\n',output.v(len_Sigma,1)-ec(1));
+fprintf('min network: %g\nmax network: %g\n',...
+    min(output.preferred_network(:,1)),...
+    max(output.preferred_network(:,1)));
 
 %% == Symmetric setup ===
 networks = [1,0;1,1];

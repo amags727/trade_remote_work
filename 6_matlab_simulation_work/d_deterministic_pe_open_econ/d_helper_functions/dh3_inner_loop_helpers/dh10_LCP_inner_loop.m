@@ -1,4 +1,4 @@
-function output = dh10_LCP_inner_loop(v, params, find_A_tilde)
+function output = dh10_LCP_inner_loop(v, params)
 
 % unpack params
 fields = fieldnames(params); % Get the field names of the structure
@@ -43,28 +43,46 @@ for n = 1:maxit
     % 
     if dist(n) < crit
         if length(int_indices_old) == len_Sigma
-            %fprintf('LCP Converged, Iteration = %g\n', n);
-            converged =  true; break
+            fprintf('LCP Converged, Iteration = %g\n', n); converged =  true; break
         else
             int_indices = 1:len_Sigma;
         end
-    elseif n == maxit || (n > give_up_n && mean(dist(n-99:n)) >.9*mean(dist(n-199:n-100)))
-        fprintf('LCP failed to converge: dist = %g\n', dist(n)); converged = false; break
+    elseif n == maxit; fprintf('HJB failed to converge \n'); converged = false;
     end
 end
 
 %% === Find the SS value of A_tilde ===
-entrance_v = v(len_Sigma, 1);
+
+% for each network at each state, determine which network is optimal net of switching costs 
 preferred_network = repmat(1:num_networks, len_Sigma,1).*(reshape(z,[],num_networks)>0) +...
                     best_alt.*(reshape(z,[],num_networks) ==0);
 
-output_names = {'v', 'optim','entrance_v', 'preferred_network', 'converged'};
+% set the initial values of Sigma and network 
+Sigma_t = Sigma(len_Sigma,:); network_t = 1; drift_mag = Inf; drift_crit = 1e-3;
+[indices, weights] = dh4_interp_box(Sigma_t, Sigma, 2);
+
+while drift_mag > drift_crit
+    drift_t = sum(optim.drift(indices,:,network_t).*weights);
+    drift_mag = sum(drift_t(:,[1,3]).^2);
+
+    Sigma_t = Sigma_t + drift_t*1/Delta;
+    disp(Sigma_t)
+    [indices, weights] = dh4_interp_box( Sigma_t, Sigma, 2);
+    best_score = -inf; best_network = 1; pref_base = [preferred_network(indices,network_t),weights];
+    for network = 1:num_networks
+        score = sum(pref_base(pref_base(:,1) == network, 2));
+        if score > best_score
+            best_score = score; best_network = network;
+        end
+    end
+    network_t = best_network;
+end
+A_tilde_out = sum(A_tilde(indices,:).*weights);
+abs_entrance_v = abs(v(len_Sigma, 1));
+output_names = {'v', 'optim','preferred_network','A_tilde_out', 'abs_entrance_v', 'optim'};
 output = struct();for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 
-if find_A_tilde
-   output.A_tilde_out = find_A_tilde_func(Sigma, A_tilde, preferred_network,...
-       optim, Delta, num_networks, Sigma(len_Sigma,:),1);
-end
+
 end
 
 %% HELPER FUNCTIONS
@@ -111,42 +129,5 @@ z = pathlcp(B,q,l,u,z0); %LCP(B,q,l,u,z0,0);
 % update the value function
 V= reshape(z+ vstar_stacked, [], num_networks);
 z = reshape(z, [], num_networks);
-end
 
-function A_tilde_out = find_A_tilde_func(Sigma, A_tilde, preferred_network, optim, Delta, num_networks, Sigma_t0, network_t0)
- 
-    % Initialization
-    drift_crit = 1e-3;
-    Sigma_t = Sigma_t0;
-    network_t = network_t0;
-    drift_mag = Inf;
-
-    % Begin iteration
-    [indices, weights] = dh4_interp_box(Sigma_t, Sigma, 2);
-    while drift_mag > drift_crit
-        % Drift update
-        drift_t = sum(optim.drift(indices,:,network_t) .* weights);
-        drift_mag = sum(drift_t.^2);
-        Sigma_t = Sigma_t + drift_t / Delta;
-
-        % Recalculate interpolation
-        [indices, weights] = dh4_interp_box(Sigma_t, Sigma, 2);
-
-        % Recalculate best network based on preference weights
-        best_score = -Inf;
-        best_network = 1;
-        pref_base = [preferred_network(indices, network_t), weights];
-
-        for network = 1:num_networks
-            score = sum(pref_base(pref_base(:,1) == network, 2));
-            if score > best_score
-                best_score = score;
-                best_network = network;
-            end
-        end
-        network_t = best_network;
-    end
-
-    % Final A_tilde_out value
-    A_tilde_out = sum(A_tilde(indices,:) .* weights);
 end

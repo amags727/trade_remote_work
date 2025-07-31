@@ -2,13 +2,17 @@ clear all; close all;
 addpath(genpath('f_helper_functions'))
 
 % set baseline params 
-parpool();
+%parpool();
 params = fh1_import_fixed_params(1);
+
+output = fh5_find_value_func(1.4, params, zeros(params.I,1), true)
 tic
-base_output = fh6_find_ss(params, 1,1);
+base_P = fh6_find_ss(params, 1);
+output = fh5_find_value_func(base_P,params, zeros(params.I,1), true);
 toc
-
-
+disp(base_P);
+disp(output.v_ss)
+disp(output.ss_index)
 % look at phi results 
 phi_vec = linspace(0,5,100);
 results = zeros(length(phi_vec),10);
