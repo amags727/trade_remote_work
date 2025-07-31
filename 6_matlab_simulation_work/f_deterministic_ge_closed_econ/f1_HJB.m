@@ -2,58 +2,17 @@ clear all; close all;
 addpath(genpath('f_helper_functions'))
 
 % set baseline params 
-%parpool();
-params = fh1_import_fixed_params(1);
+params = fh1_import_fixed_params(2,1);
+last_output = fh6_find_ss(params, 1);
 
-output = fh5_find_value_func(1.4, params, zeros(params.I,1), true)
-tic
-base_P = fh6_find_ss(params, 1);
-output = fh5_find_value_func(base_P,params, zeros(params.I,1), true);
-toc
-disp(base_P);
-disp(output.v_ss)
-disp(output.ss_index)
+% examine results from last iteration of 
 % look at phi results 
-phi_vec = linspace(0,5,100);
-results = zeros(length(phi_vec),10);
+Sigma_scalar_vec = linspace(1,3,100);
+results = zeros(length(Sigma_scalar_vec), 3);
 
-results(:,1) = phi_vec;
-
-
-
-if isempty(gcp('nocreate'))
-    parpool; % uses default settings; you can specify workers if needed
-end
-parfor i = 1:length(phi_vec)
+for i = 1:length(Sigma_scalar_vec)
     disp(i)
-    % Make a local copy of params
-    local_params = params;
-    local_params.phi_d = phi_vec(i);
-
-    % Call optimization function
-    output = fh6_find_ss(local_params, base_output.num_firms_ss, base_output.A_tilde_out);
-
-    % Find the steady state index (split between two) 
-    drift = output.optimal.drift; 
-    j = find(drift > 0, 1, 'last');
-    w = drift(j) / (drift(j) - drift(j+1));
-
-    % find steady state outputs 
-    gamma = local_params.gamma;
-    E_x = output.E_x; Sigma = local_params.Sigma; profit = output.optimal.pi_with_actions;
-    L = output.optimal.L; Sigma_ub = local_params.Sigma(local_params.I);
-    num_firms = output.num_firms_ss;
-    A_tilde_ss = output.A_tilde_out;
-
-    E_x = (1-w)*E_x(j) + w*E_x(j+1);
-    Sigma = (1-w)*Sigma(j) + w*Sigma(j+1);
-    profit = (1-w)*profit(j) + w*profit(j+1);
-    L = (1-w)*L(j) + w*L(j+1);
-    certainty = 1- Sigma/Sigma_ub;
-    agg_X = E_x * (A_tilde_ss^(1/gamma) * num_firms)^(gamma/(gamma-1));
-
-    % output results 
-    results(i, :) = [phi_vec(i),num_firms, A_tilde_ss,E_x, Sigma, profit, L, certainty, agg_X, output.converged];
+    params = fh1_import_fixed_params(Sigma_scalar_vec(i),1);
+    last_output = fh6_find_ss(params,last_output.P_opt);
+    results(i,:) = [Sigma_scalar_vec(i), last_output.ss_index, last_output.v_ss];
 end
-results = array2table(results,...
-'VariableNames', {'phi_d','num_firms', 'A_tilde', 'E_x', 'Sigma', 'profit', 'L', 'certainty', 'agg_X', 'converged'});

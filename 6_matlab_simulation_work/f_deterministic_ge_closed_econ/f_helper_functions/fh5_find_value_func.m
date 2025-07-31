@@ -13,7 +13,7 @@ pi_bar =  x_bar*w_g*phi_g^-1*(gammma-1)^-1;
 E_x = x_bar*A_tilde;
 E_pi = pi_bar*A_tilde -fc;
 xi = Sigma_pen*alpha_1*phi_d.*E_x.^alpha_2;
-vars = {'Sigma','xi', 'E_x', 'E_pi', 'alpha_1', 'alpha_2', 'phi_d', 'sigma_a','Q', 'w', 'theta'};
+vars = {'Sigma','xi', 'E_x', 'E_pi', 'alpha_1', 'alpha_2', 'phi_d', 'sigma_a','Q', 'w', 'theta','Sigma_pen'};
 upwind_params = struct();for i = 1:length(vars); name = vars{i}; upwind_params.(name) = eval(name); end
 
 % carry out value func iteration 

@@ -8,7 +8,7 @@ L_input(L_input<0) = 0;
 L = real(L_input.^(1/(1 - alpha_1)));
 
 % Calculate R and drift
-R = phi_d.*L.^alpha_1.*E_x.^alpha_2 + sigma_a.^(-2);
+R = Sigma_pen.*phi_d.*L.^alpha_1.*E_x.^alpha_2 + sigma_a.^(-2);
 
 % Drift / pi / hamiltonian
 drift = -Sigma.^2.*R - 2*theta*Sigma + Q;

@@ -1,4 +1,4 @@
-function P_opt = fh6_find_ss(params, P0)
+function final_output = fh6_find_ss(params, P0)
 
     % Define bounds (adjust upper bound if needed)
     lb = 1e-6;
@@ -7,8 +7,10 @@ function P_opt = fh6_find_ss(params, P0)
     % Optimization options
     opts = optimset('Display', 'off', 'TolX', 1e-6, 'TolFun', 1e-6);
 
-    % Run 1D optimization
+    % Run optimization
     [P_opt, ~] = fminbnd(@objective_wrapper, lb, ub, opts);
+    final_output = fh5_find_value_func(P_opt,params, zeros(params.I,1), false);
+    final_output.P_opt = P_opt;
 
     % Objective wrapper with caching
     function value = objective_wrapper(P)
