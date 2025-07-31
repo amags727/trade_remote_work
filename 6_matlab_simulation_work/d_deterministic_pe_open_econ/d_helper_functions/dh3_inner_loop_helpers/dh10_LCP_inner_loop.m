@@ -76,10 +76,11 @@ while drift_mag > drift_crit
     end
     network_t = best_network;
 end
+v_ss = sum(v(indices,network_t).*weights);
 A_tilde_out = sum(A_tilde(indices,:).*weights);
 abs_entrance_v = abs(v(len_Sigma, 1));
 network_ss = network_t;
-output_names = {'v', 'optim','preferred_network','network_ss','A_tilde_out', 'abs_entrance_v', 'optim'};
+output_names = {'v', 'optim','preferred_network','network_ss','A_tilde_out', 'abs_entrance_v', 'optim', 'v_ss'};
 output = struct();for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 
 

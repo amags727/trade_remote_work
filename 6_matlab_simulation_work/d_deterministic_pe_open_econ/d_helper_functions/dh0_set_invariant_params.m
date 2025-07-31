@@ -46,8 +46,8 @@ adjacency_matrix = make_adjacency_matrix(len_Sigma,num_state_vars,I) ;
 A_tilde  = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
 
 % Gen Sigma Penalty 
-Sigma_pen_ratio = 3;
-Sigma_pen_curve = .5;
+Sigma_pen_ratio = 1;
+Sigma_pen_curve = 1;
 ub = Sigma(len_Sigma, [1,3]); lb = Sigma(1, [1,3]);
 Sigma_pen_scalar = (Sigma_pen_ratio - 1) *(ub.^Sigma_pen_curve - lb.^Sigma_pen_curve).^(-1);
 Sigma_pen = (1+Sigma_pen_scalar.* Sigma(:,[1,3]).^Sigma_pen_curve).^(-1);
