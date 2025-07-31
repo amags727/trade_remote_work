@@ -21,7 +21,7 @@ w = 1; % data worker wage
 phi_d = 1; % data productivity 
 alpha_1 = .5;  % cobb douglas coefficient on data labor 
 alpha_2 = .5; % cobb douglas coefficient on raw data 
-top_bottom_quality_ratio = 3; % how much data helps improve quality 
+top_bottom_quality_ratio = 2; % how much data helps improve quality 
 sigma_z = repmat(1.1,1,num_mkts); % variance of random component of z
 theta = .9; % mean reversion parameter of z (closer to one faster mean reversion)
 lambda_tilde = .5; % correlation coefficient between mkts 
@@ -45,6 +45,13 @@ adjacency_matrix = make_adjacency_matrix(len_Sigma,num_state_vars,I) ;
 % Gen A_tilde 
 A_tilde  = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
 
+% Gen Sigma Penalty 
+Sigma_pen_ratio = 3;
+Sigma_pen_curve = .5;
+ub = Sigma(len_Sigma, [1,3]); lb = Sigma(1, [1,3]);
+Sigma_pen_scalar = (Sigma_pen_ratio - 1) *(ub.^Sigma_pen_curve - lb.^Sigma_pen_curve).^(-1);
+Sigma_pen = (1+Sigma_pen_scalar.* Sigma(:,[1,3]).^Sigma_pen_curve).^(-1);
+
 % Gen FC / entry cost base 
 fc_base = 8.2105; ec_base = fc_base*ec_multiplier;
 %[fc_base,ec_base, no_data_ss_indices, no_data_ss_weights] = set_fc_ec(sigma_a, ...
@@ -55,7 +62,7 @@ var_names = {'I', 'num_mkts', 'num_networks', 'phi_g', 'foreign_cost_scaling', .
     'top_bottom_quality_ratio', 'sigma_z', 'theta', 'lambda_tilde', 'rho', ...
     'Delta', 'crit', 'maxit', 'Q', 'D', 'Sigma', 'Sigma_mat', ...
     'num_state_vars', 'len_Sigma', 'd_Sigma', 'diag_indeces', 'A_tilde', ...
-    'adjacency_matrix', 'sigma_a','tau', 'rev_ec','fc_base', 'ec_base'};
+    'adjacency_matrix', 'sigma_a','tau', 'rev_ec','fc_base', 'ec_base', 'Sigma_pen'};
 params = struct();for i = 1:length(var_names); name = var_names{i}; params.(name) = eval(name); end
 end
 
@@ -109,8 +116,6 @@ state_space_ub =  Sigma_ub(triu(true(size(Sigma_ub)), 0));
 vecs = arrayfun(@(x) linspace(Sigma_lb, x, I), state_space_ub, 'UniformOutput', false);
 [nvecs{1:numel(vecs)}] = ndgrid(vecs{:});
 Sigma = cell2mat(cellfun(@(x) x(:), nvecs, 'UniformOutput', false));
-
-
 end
 
 function A_tilde = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces)

@@ -58,6 +58,7 @@ for network = 1:num_networks
         l_params.E_x = repmat(params.E_x(key_rows, :,network), num_combos,1);
         l_params.E_pi = repmat(params.E_pi(key_rows, :, network), num_combos,1);
         l_params.xi = repmat(params.xi(key_rows, :,network), num_combos,1);
+        l_params.Sigma_pen = repmat(params.Sigma_pen(key_rows,:), num_combos,1);
 
 
         optim = dh5_optim_calc(dv_combos, l_params);
@@ -78,4 +79,5 @@ upwind_params.Sigma_mat = params.Sigma_mat(:,:,int_indices,:);
 upwind_params.E_x = params.E_x(int_indices, :,:);
 upwind_params.E_pi = params.E_pi(int_indices, :,:);
 upwind_params.xi = params.xi(int_indices, :,:);
+upwind_params.Sigma_pen = params.Sigma_pen(int_indices,:);
 end

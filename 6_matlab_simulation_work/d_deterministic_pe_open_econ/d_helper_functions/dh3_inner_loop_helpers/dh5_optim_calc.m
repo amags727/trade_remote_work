@@ -97,7 +97,7 @@ clear Id_matrix diag_vals Sigma_dv_Sigma_mat L_input
 
 % ==== generate the drift ====
 % generate R and D matrices 
-R_vec = phi_d*L.^alpha_1.*E_x.^alpha_2 + (sigma_a.^-2) .* permute(networks, [3, 2, 1]);
+R_vec = Sigma_pen*phi_d.*L.^alpha_1.*E_x.^alpha_2 + (sigma_a.^-2) .* permute(networks, [3, 2, 1]);
 R_mat = zeros(num_mkts, num_mkts, len_Sigma, num_networks);
 for i = 1:num_mkts
     R_mat(i, i, :, :) = squeeze(R_vec(:, i, :)); 

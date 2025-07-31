@@ -22,6 +22,9 @@ ge_vars = {'networks' 'fc', 'ec', 'y', 'p','crit', 'give_up_n', 'eq_crit'};
 for i = 1:length(ge_vars); name = ge_vars{i}; params.(name) = eval(name); end
 P_ss = find_symmetric_ss(params, 1);
 
+
+
+
 P = P_ss;
 x_bar = params.y * (params.gamma_tilde * params.p).^(-params.gamma) / (P^(1 - params.gamma));
 pi_bar = x_bar * params.w_g * params.phi_g^(-1) * (params.gamma - 1)^(-1);

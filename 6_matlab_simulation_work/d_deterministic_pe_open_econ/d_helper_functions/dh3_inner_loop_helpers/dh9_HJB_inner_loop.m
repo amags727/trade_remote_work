@@ -95,6 +95,7 @@ upwind_params.Sigma_mat = local_params.Sigma_mat(:,:,int_indices);
 upwind_params.E_x = local_params.E_x(int_indices, :);
 upwind_params.E_pi = local_params.E_pi(int_indices, :);
 upwind_params.xi = local_params.xi(int_indices, :);
+upwind_params.Sigma_pen = local_params.Sigma_pen(int_indices,:);
 end
 
 

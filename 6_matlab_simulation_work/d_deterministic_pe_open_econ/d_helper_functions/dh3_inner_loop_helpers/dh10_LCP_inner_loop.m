@@ -66,7 +66,6 @@ while drift_mag > drift_crit
     drift_mag = sum(drift_t(:,[1,3]).^2);
 
     Sigma_t = Sigma_t + drift_t*1/Delta;
-    disp(Sigma_t)
     [indices, weights] = dh4_interp_box( Sigma_t, Sigma, 2);
     best_score = -inf; best_network = 1; pref_base = [preferred_network(indices,network_t),weights];
     for network = 1:num_networks
@@ -79,7 +78,8 @@ while drift_mag > drift_crit
 end
 A_tilde_out = sum(A_tilde(indices,:).*weights);
 abs_entrance_v = abs(v(len_Sigma, 1));
-output_names = {'v', 'optim','preferred_network','A_tilde_out', 'abs_entrance_v', 'optim'};
+network_ss = network_t;
+output_names = {'v', 'optim','preferred_network','network_ss','A_tilde_out', 'abs_entrance_v', 'optim'};
 output = struct();for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 
 
@@ -95,6 +95,7 @@ upwind_params.Sigma_mat = params.Sigma_mat(:,:,int_indices,:);
 upwind_params.E_x = params.E_x(int_indices, :,:);
 upwind_params.E_pi = params.E_pi(int_indices, :,:);
 upwind_params.xi = params.xi(int_indices, :,:);
+upwind_params.Sigma_pen = params.Sigma_pen(int_indices, :);
 end
 
 function [V,z,best_alt] = actual_lcp_wrapper(v, profit, A_matrix, params, int_indices)

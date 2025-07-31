@@ -4,6 +4,7 @@ addpath(genpath('f_helper_functions'))
 % set baseline params 
 params = fh1_import_fixed_params(2,1);
 last_output = fh6_find_ss(params, 1);
+disp(last_output.v_ss)
 
 % examine results from last iteration of 
 % look at phi results 
