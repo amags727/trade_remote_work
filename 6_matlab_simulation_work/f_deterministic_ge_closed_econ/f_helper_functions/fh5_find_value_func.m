@@ -1,4 +1,4 @@
-function output = fh5_find_value_func(num_firms,A_tilde_in, params, v_0)
+function output = fh5_find_value_func(P, params, v_0, display_on)
 % A_tilde_in = our guess of steady state quality 
 % num_firms = our guess of the current number of firms in mkt
 
@@ -6,13 +6,13 @@ function output = fh5_find_value_func(num_firms,A_tilde_in, params, v_0)
 fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
 gammma =params.gamma;
-% gen supplementary variables based on fixed params and num firms 
-P = (A_tilde_in*num_firms)^(1/(1-gammma)).*optimal_p; 
+
+% gen supplementary variables based on fixed params P
 x_bar = y*(gamma_tilde*w)^(-gammma)/ (P^(1-gammma));
 pi_bar =  x_bar*w_g*phi_g^-1*(gammma-1)^-1;
 E_x = x_bar*A_tilde;
 E_pi = pi_bar*A_tilde -fc;
-xi = alpha_1*phi_d*E_x.^alpha_2;
+xi = Sigma_pen*alpha_1*phi_d.*E_x.^alpha_2;
 vars = {'Sigma','xi', 'E_x', 'E_pi', 'alpha_1', 'alpha_2', 'phi_d', 'sigma_a','Q', 'w', 'theta'};
 upwind_params = struct();for i = 1:length(vars); name = vars{i}; upwind_params.(name) = eval(name); end
 
@@ -72,10 +72,10 @@ for n=1:maxit
     v = V;
     
     dist(n) = max(abs(Vchange));
-    % fprintf('Distance =  %g\n',dist(n));
+    if display_on; fprintf('Distance =  %g\n',dist(n)); end
     if dist(n)<crit
         converged = true;
-       % fprintf('Value Function Converged, Iteration = %g\n',n)
+      % fprintf('Value Function Converged, Iteration = %g\n',n)
             break
     end
     if n== maxit
@@ -85,14 +85,12 @@ for n=1:maxit
 end
 
 %% === output results ====
-abs_entrance_v = abs(v(I));
-
-drift = optimal.drift;
-i = find(drift > 0, 1, 'last');
+miss_value = abs(v(I));
+drift = optimal.drift; i = find(drift > 0, 1, 'last');
 w = drift(i) / (drift(i) - drift(i+1));
 A_tilde_out = (1 - w) * A_tilde(i) + w * A_tilde(i+1);
-miss_value = sum([abs_entrance_v, (A_tilde_out - A_tilde_in)*25].^2);
-
-vars = {'v', 'optimal', 'A_tilde_out','miss_value','converged'};
+v_ss = (1 - w) * v(i) + w * v(i+1);
+ss_index = i;
+vars = {'v', 'optimal', 'A_tilde_out','miss_value','v_ss','ss_index','converged'};
 output = struct();for i = 1:length(vars); name = vars{i}; output.(name) = eval(name); end
 end
