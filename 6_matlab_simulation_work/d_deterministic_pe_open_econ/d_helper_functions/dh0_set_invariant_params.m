@@ -7,21 +7,23 @@ num_networks = 2;
 
 % production parameters 
 phi_g = 1;
-ec_multiplier = 1.6; % fc * ec_multiplier = ec 
+foreign_cost_scaling = 1.1; %fc * fixed_cost_scaling = foreign market fixed costs 
+fc_base = 3.0051;
+fc = fc_base *[1,foreign_cost_scaling];
+ec = .01*ones(1,2); % entry costs to market 
 rev_ec = repmat(5,1, num_mkts); % exit costs from market 
 w_g = 1; % wage for production workers
 gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
 initial_demand_assumption = 20;
 tau = 1.0; % iceberg trade costs 
-foreign_cost_scaling = 1.1; %fc * fixed_cost_scaling = foreign market fixed costs 
 
 %data parameters 
 w = 1; % data worker wage
 phi_d = 1; % data productivity 
 alpha_1 = .5;  % cobb douglas coefficient on data labor 
 alpha_2 = .5; % cobb douglas coefficient on raw data 
-top_bottom_quality_ratio = 2; % how much data helps improve quality 
+top_bottom_quality_ratio = 2.5; % how much data helps improve quality 
 sigma_z = repmat(1.1,1,num_mkts); % variance of random component of z
 theta = .9; % mean reversion parameter of z (closer to one faster mean reversion)
 lambda_tilde = .5; % correlation coefficient between mkts 
@@ -46,23 +48,19 @@ adjacency_matrix = make_adjacency_matrix(len_Sigma,num_state_vars,I) ;
 A_tilde  = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
 
 % Gen Sigma Penalty 
-Sigma_pen_ratio = 1;
-Sigma_pen_curve = 1;
+Sigma_pen_ratio = 2;
+Sigma_pen_curve = .5;
 ub = Sigma(len_Sigma, [1,3]); lb = Sigma(1, [1,3]);
 Sigma_pen_scalar = (Sigma_pen_ratio - 1) *(ub.^Sigma_pen_curve - lb.^Sigma_pen_curve).^(-1);
 Sigma_pen = (1+Sigma_pen_scalar.* Sigma(:,[1,3]).^Sigma_pen_curve).^(-1);
 
-% Gen FC / entry cost base 
-fc_base = 8.2105; ec_base = fc_base*ec_multiplier;
-%[fc_base,ec_base, no_data_ss_indices, no_data_ss_weights] = set_fc_ec(sigma_a, ...
- %   Sigma, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier, num_mkts);
 
 var_names = {'I', 'num_mkts', 'num_networks', 'phi_g', 'foreign_cost_scaling', ...
     'w_g', 'gamma', 'gamma_tilde', 'w', 'phi_d', 'alpha_1', 'alpha_2', ...
     'top_bottom_quality_ratio', 'sigma_z', 'theta', 'lambda_tilde', 'rho', ...
     'Delta', 'crit', 'maxit', 'Q', 'D', 'Sigma', 'Sigma_mat', ...
     'num_state_vars', 'len_Sigma', 'd_Sigma', 'diag_indeces', 'A_tilde', ...
-    'adjacency_matrix', 'sigma_a','tau', 'rev_ec','fc_base', 'ec_base', 'Sigma_pen'};
+    'adjacency_matrix', 'sigma_a','tau','fc', 'ec', 'rev_ec', 'Sigma_pen'};
 params = struct();for i = 1:length(var_names); name = var_names{i}; params.(name) = eval(name); end
 end
 
@@ -133,8 +131,6 @@ penalty_norm = (penalty - min(penalty)) ./ (max(penalty) - min(penalty));
 A_tilde = top_bottom_quality_ratio - (top_bottom_quality_ratio - 1) * penalty_norm;
 
 end
-
-
 
 function [fc_base,ec_base, indices, weights] = set_fc_ec(sigma_a,Sigma, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier, ...
     num_mkts) 

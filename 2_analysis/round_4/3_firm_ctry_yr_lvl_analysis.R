@@ -138,7 +138,6 @@ format_table(temp_model_output, label = label, caption = 'Country Level Results:
 }
 
 # 3c  gravity ------------------------------------------
-
 gravity_vars<-c("grav_region", "grav_border", "grav_language", "grav_dist", 
                 "either_grav_region", "either_grav_border", "either_grav_language", "either_grav_dist", 
                 "ctry_pop", "nace_ctry_pop")

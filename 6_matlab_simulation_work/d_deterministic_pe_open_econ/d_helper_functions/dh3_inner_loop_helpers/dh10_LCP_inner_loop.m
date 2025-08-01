@@ -4,6 +4,16 @@ function output = dh10_LCP_inner_loop(v, params)
 fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
 
+% Set PE variables 
+x_bar = x_scale_factor*phi_g^params.gamma; % base demand 
+pi_bar = x_bar*w_g*phi_g^-1*(params.gamma-1)^-1; % base profits 
+E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
+E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits (not accounting for fixed costs; data labor)
+xi = Sigma_pen*alpha_1*phi_d.*E_x.^alpha_2;
+pe_vars = {'E_x', 'E_pi', 'xi'};
+for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
+
+
 % set initial int_indices
 int_indices = 1:len_Sigma;
 
@@ -78,9 +88,9 @@ while drift_mag > drift_crit
 end
 v_ss = sum(v(indices,network_t).*weights);
 A_tilde_out = sum(A_tilde(indices,:).*weights);
-abs_entrance_v = abs(v(len_Sigma, 1));
+entrance_v = v(len_Sigma, 1);
 network_ss = network_t;
-output_names = {'v', 'optim','preferred_network','network_ss','A_tilde_out', 'abs_entrance_v', 'optim', 'v_ss'};
+output_names = {'v', 'optim','preferred_network','network_ss','A_tilde_out', 'entrance_v', 'optim', 'v_ss'};
 output = struct();for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 
 

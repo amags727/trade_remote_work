@@ -1,8 +1,18 @@
-function [v, optim, converged] = dh8_HJB_inner_loop(v0, params)
+function [v, optim, converged] = dh9_HJB_inner_loop(v0, params)
 
 % unpack params
 fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
+
+% Set PE variables 
+x_bar = x_scale_factor*phi_g^params.gamma; % base demand 
+pi_bar = x_bar*w_g*phi_g^-1*(params.gamma-1)^-1; % base profits 
+E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
+E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits (not accounting for fixed costs; data labor)
+xi = Sigma_pen*alpha_1*phi_d.*E_x.^alpha_2;
+pe_vars = {'E_x', 'E_pi', 'xi'};
+for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
+
 
 % set outputs
 v_out = zeros(len_Sigma, num_networks);

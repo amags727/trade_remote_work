@@ -1,0 +1,60 @@
+clear all; close all; clc;
+addpath(genpath('../b_helper_functions'));
+addpath(genpath('d_helper_functions'))
+addpath(genpath('d_output'))
+
+%% setup 
+params = dh0_set_invariant_params();
+params.networks = [1,0;1,1];
+params.eq_crit = 1e-1;
+
+
+demand_opt = find_symmetric_ss(params, 10);
+
+function demand_opt = find_symmetric_ss(params, demand0)
+
+    % Define bounds (adjust upper bound if needed)
+    lb = 1e-6;
+    ub = demand0;  % Example heuristic for upper bound
+
+    % Optimization options
+    opts = optimset('Display', 'off', 'TolX', 1e-6, 'TolFun', 1e-6);
+
+    % Run optimization
+    [demand_opt, ~] = fminbnd(@objective_wrapper, lb, ub, opts);
+    params.x_scale_factor = demand_opt * ones(1,2);
+    final_output = dh10_LCP_inner_loop(f);
+   
+
+    % Objective wrapper with caching
+    function value = objective_wrapper(demand)
+        l_params = params;
+        l_params.x_scale_factor = demand*ones(1,2);
+ 
+        persistent cache  % Holds past {demand, v} pairs
+        % Search for close match in cache
+        if ~isempty(cache)
+            distances = cellfun(@(entry) abs(demand - entry.demand), cache);
+            [~, idx] = min(distances);
+            v_0 = cache{idx}.v;
+            output = dh10_LCP_inner_loop(v_0, l_params);
+        else
+            v_hjb = dh9_HJB_inner_loop(zeros(params.len_Sigma, params.num_networks),l_params);
+            output  = dh10_LCP_inner_loop(v_hjb, l_params);
+        end
+        value = abs(output.entrance_v - params.ec(1));
+        fprintf('demand = %g; excess value = %g\n',demand, output.entrance_v - params.ec(1))
+        final_v = output.v;  % Save to outer scope
+
+        % Update cache
+        new_entry = struct('demand', demand, 'v', output.v);
+        if isempty(cache)
+            cache = {new_entry};
+        else
+            cache{end+1} = new_entry;
+            if numel(cache) > 20
+                cache = cache(end-19:end);  % Keep last 20
+            end
+        end
+    end
+end

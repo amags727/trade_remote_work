@@ -1,34 +1,20 @@
-%clear all; close all; clc;
+clear all; close all; clc;
 addpath(genpath('../b_helper_functions'));
 addpath(genpath('d_helper_functions'))
 addpath(genpath('d_output'))
 dbstop if error
 
-% set invariant parameters 
+% setup 
 params = dh0_set_invariant_params();
-
 fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
 
 
 %% === PE setup ===
-networks = [1,0;1,1];
-x_scale_factor = 20;
-fc = fc_base *[1,foreign_cost_scaling];
-ec = ec_base *[1,foreign_cost_scaling];
-x_bar = x_scale_factor*phi_g^gamma; % base demand 
-pi_bar = x_bar*w_g*phi_g^-1*(gamma-1)^-1; % base profits 
-
-E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
-E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits (not accounting for fixed costs; data labor)
-xi = Sigma_pen*alpha_1*phi_d.*E_x.^alpha_2;
-v0 = zeros(len_Sigma, num_networks);
-
-pe_vars = {'x_scale_factor','networks' 'fc', 'ec', 'E_x', 'E_pi', 'xi'};
-for i = 1:length(pe_vars); name = pe_vars{i}; params.(name) = eval(name); end
-params.crit = 5e-3;
+params.networks = [1,0;1,1];
+params.x_scale_factor = [10,10];
 if ~exist('output','var')
-    v_hjb_init = dh9_HJB_inner_loop(v0,params);
+    v_hjb_init = dh9_HJB_inner_loop(zeros(len_Sigma, num_networks),params);
     output  = dh10_LCP_inner_loop(v_hjb_init, params);
 else
     output  = dh10_LCP_inner_loop(output.v, params);
@@ -36,6 +22,8 @@ end
 fprintf('v_end - ec = %g\n',output.v(len_Sigma,1)-ec(1));
 fprintf('network_ss = %g\n',output.network_ss);
 fprintf('percent diff ss to init: %g\n', (output.v_ss - output.v(len_Sigma,1)) / output.v(len_Sigma,1))
+
+
 
 
 
