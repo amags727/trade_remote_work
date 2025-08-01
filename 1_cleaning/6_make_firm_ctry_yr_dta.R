@@ -76,7 +76,7 @@ customs_age_data = import_file(firm_ctry_lvl_birth_path) %>% .[exim ==2] %>% .[,
 vars_to_any = gpaste(c('currently_export', 'nace_share_export', 'is_first_export_year','log_years_since_first_export_year'),'_customs')
 firm_yr = import_file(firm_yr_path) %>% rename_with(.cols = vars_to_any, ~paste0(., '_any_ctry')) %>% 
   select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total',
-           'share_empl_college', 'use_data','use_data_lag1','num_mkts', 'last_observed', 'capital_intensity',
+           'share_empl_college', 'use_data','use_data_lag1','num_mkts', 'last_observed',"capital_intensity",
            con_fil(con_fil(., 'log', 'nace_comp_data_quartile', 'any_ctry'), 'BS', 'detrended', inc =F))) %>%
   .[,firmid_year_num := as.numeric(as.factor(paste0(firmid_num,"_", year)))] %>% 
   .[, `:=`(num_firms = .N, num_exporters = NA_sum(currently_export_customs_any_ctry)), by = year] %>% 
@@ -125,13 +125,15 @@ output[, `:=`(
   mkt_failure_rate  = NA_sum(year == streak_start & year == streak_end) /
     NA_sum(!is.na(streak_start + streak_end))
 ), by = .(ctry_num, year)]
+output[, last_year_of_streak:=(year==streak_end)]
 
-output = variance_metrics(time_id = 'year', group_id = 'ctry_num',
+output = variance_metrics(output, time_id = 'year', group_id = 'ctry_num',
                           ind_id = 'streak_id', int_id = 'export_rev_customs',
                           birth_id = 'streak_start', logged_version = TRUE,
                           prefix = 'mkt_', full_dataset = TRUE)
+output = calc_churn_rates(output, 'ctry_num', 'streak_start', 'last_year_of_streak', 'year', 'mkt')
 
-## market Ã— industry metrics
+## market × industry metrics
 output[, `:=`(
   nace_mkt_failure_rate = NA_sum(year == streak_start & year == streak_end) /
     NA_sum(!is.na(streak_start + streak_end)),
@@ -140,10 +142,11 @@ output[, `:=`(
   nace_mkt = paste0(NACE_BR, ctry_num)
 ), by = .(NACE_BR, year, ctry_num)]
 
-output = variance_metrics(time_id = 'year', group_id = 'nace_mkt',
+output = variance_metrics(output, time_id = 'year', group_id = 'nace_mkt',
                           ind_id = 'streak_id', int_id = 'export_rev_customs',
                           birth_id = 'streak_start', logged_version = TRUE,
-                          prefix = 'nace_mkt_', full_dataset = TRUE)[, nace_mkt := NULL]
-  
+                          prefix = 'nace_mkt_', full_dataset = TRUE)[, nace_mkt := NULL]#%>% 
+output = calc_churn_rates(output, c('ctry_num','NACE_BR'), 'streak_start', 'last_year_of_streak', 'year', 'nace_mkt')
+
 write_parquet(output, firm_yr_ctry_path) 
 

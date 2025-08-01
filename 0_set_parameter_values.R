@@ -2,8 +2,7 @@
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
              'arrow', 'fixest', 'countrycode', 'survival', 'knitr', 'parallel', 'patchwork', 'scales', 'duckdb', 
-             'truncnorm','sf', 'rnaturalearth', 'geosphere', 'giscoR', 'googledrive', 'R.matlab', 
-             'latex2exp')
+             'truncnorm','sf', 'rnaturalearth', 'geosphere', 'giscoR', 'googledrive')
 lapply(packages, function(package){tryCatch({library(package,character.only = T)}, error = function(cond){
   install.packages(package); library(package, character.only = T)
 })})
@@ -70,14 +69,16 @@ set.seed(43)
 # project specific helper functions  --------------------------------------
 ## NB we're not currently using the churn rates function 
 calc_churn_rates = function(df, group_var, birth_var, death_var, time_var, prefix){
-  group = c(group_var, time_var)
-  df[, (paste0(prefix, "_entrance_rate")) := as.numeric(NA_mean(get(time_var) == get(birth_var))),   by = group] %>%
-    .[, (paste0(prefix, "_exit_rate"))     := as.numeric(NA_mean(get(time_var) == get(death_var))),  by = group] %>% 
-    .[, (paste0(prefix, '_immediate_failure_rate')) := as.numeric(NA_mean(ifelse(get(time_var) == get(birth_var),get(birth_var) == get(death_var), NA))), by = group] %>%
+  df[, (paste0(prefix, "_entrance_rate")) := as.numeric(NA_mean(get(time_var) == get(birth_var))),   by = c(group_var, time_var)] %>%
+    .[, (paste0(prefix, "_exit_rate"))     := as.numeric(NA_mean(get(time_var) == get(death_var))),  by = c(group_var, time_var)] %>% 
+    # .[, (paste0(prefix, "_immediate_failure_rate")) :=as.numeric(NA_mean(ifelse(get(time_var)==get(birth_var), get(birth_var) == (get(death_var)*get(time_var)), NA))), by=c(group_var, time_var)] %>%
     .[,(paste0(prefix, "_churn_rate")) := as.numeric(0.5 * (get(paste0(prefix, "_entrance_rate")) + get(paste0(prefix, "_exit_rate"))))] %>%
-  
+    .[, (paste0(prefix, "_immediate_failure_rate_year_to_year")) :=as.numeric(NA_sum(get(birth_var)==(get(death_var)*get(time_var)))/NA_sum(get(time_var)==get(birth_var))), by = c(group_var, time_var)] %>%
+    .[, (paste0(prefix, "_immediate_failure_rate_avg_over_time")) :=as.numeric(NA_mean(get(paste0(prefix, "_immediate_failure_rate_year_to_year")))), by = group_var]
+
   return(df)
 }
+
 numeric_firmid = function(df){
   if(getwd() == "C:/Users/Public/Documents/Big data Project"){
   merge(df, import_file('1) data/0_misc_data/0b_dictionaries/0b1_matched_firm_dict.parquet'), by = 'firmid') %>% select(-firmid)

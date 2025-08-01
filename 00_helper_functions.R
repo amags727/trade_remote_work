@@ -206,7 +206,7 @@ model_coef = function(model_output, dummy_version = F, cox = F){
   }
 }
 
-comp_coef_names = function(original, new, dummy_version = F){
+comp_coef_names = function(original, new, dummy_version){
   if (typeof(original) == 'list'){
     og = model_coef(original, dummy_version)
     if(is.null(og)) og = model_coef(original, T)
@@ -489,14 +489,13 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   # output table to file 
   if (!is.na(output_path)){
     if (make_tex){
-      writeLines(table, output_path)
-      #if(!file.exists(output_path) | !grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
-      #  writeLines(table, output_path)
-      #}else{
-       # writeLines(table, 'temp.tex');
-      #  drive_update(output_path, 'temp.tex')
-      #  file.remove('temp.tex')
-      #}
+      if(!file.exists(output_path) | !grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
+        writeLines(table, output_path)
+      }else{
+        writeLines(table, 'temp.tex');
+        drive_update(output_path, 'temp.tex')
+        file.remove('temp.tex')
+      }
     }
     if (make_pdf){
       latex_preamble <- "\\documentclass[11pt]{article}\\usepackage{adjustbox,amsmath,amsthm,amssymb,enumitem,graphicx,dsfont,mathrsfs,float,caption,multicol,ragged2e,xcolor,changepage,hyperref,printlen,wrapfig,stackengine, fancyhdr,pdflscape,parskip}\\hypersetup{colorlinks=true, linkcolor=blue, filecolor=magenta, urlcolor=blue,}\\usepackage[margin=1in]{geometry}\\usepackage[utf8]{inputenc}\\renewcommand{\\qedsymbol}{\\rule{0.5em}{0.5em}}\\def\\lp{\\left(}\\def\\rp{\\right)}\\DeclareMathOperator*{\\argmin}{arg\\,min}\\DeclareMathOperator*{\\argmax}{arg\\,max}\\def\\code#1{\\texttt{#1}}\\newcommand\\fnote[1]{\\captionsetup{font=small}\\caption*{#1}}\\usepackage[savepos]{zref}\\raggedcolumns\\RaggedRight\\makeatletter \\makeatother\\def\\bfseries{\\fontseries \\bfdefault \\selectfont\\boldmath}\\graphicspath{{./graphics/}}"
@@ -504,13 +503,12 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
       tinytex::latexmk("temp.tex")
       pdf_path = gsub('tex', 'pdf', output_path)
       file.remove("temp.tex")
-      file.rename('temp.pdf', pdf_path) 
-     # if(file.exists(pdf_path) & grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
-    #    drive_update(pdf_path, 'temp.pdf')
-     #   file.remove('temp.pdf')
-     # }else{
-    #  file.rename('temp.pdf', pdf_path)
-    #  }
+      if(file.exists(pdf_path) & grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
+        drive_update(pdf_path, 'temp.pdf')
+        file.remove('temp.pdf')
+      }else{
+      file.rename('temp.pdf', pdf_path)
+      }
     }
   }
   
@@ -726,8 +724,6 @@ import_file <- function(..., col_select = NULL, data_table = T, char_vars = NULL
     file <- readRDS(filepath)
   } else if(grepl("\\.shp$", filepath, ignore.case = TRUE)){
     file = st_read(filepath)
-  } else if(grepl("\\.mat$", filepath)){
-    file = readMat(filepath)
   } else {
     stop("Unsupported file type")
   }
@@ -997,6 +993,74 @@ coef_var = function(x){
 }
 NA_coef_var = function(x){
   NA_sd(x)/NA_mean(x)
+}
+
+variance_metrics = function(df,subset_id = NA, remove_NA_subset = T, 
+                            time_id, group_id, ind_id, int_id, birth_id,
+                            logged_version = T,prefix = "", full_dataset = T){
+  df_og = df
+  df$time_var = df[[time_id]]; df$group_var = df[[group_id]];
+  df$int_var = df[[int_id]]; df$birth_var = df[[birth_id]]
+  df$ind_var = df[[ind_id]]
+  max_time = NA_max(df$time_var)
+  
+  if (logged_version) df$int_var = asinh(df$int_var)
+  if(!is.na(subset_id)){df$subset_var = df[[subset_id]]}else{df$subset_var = 1}
+  if(remove_NA_subset){df = df[!is.na(subset_var)]}
+  
+  
+  temp = lapply(unique(df$subset_var), function(subset_val){ 
+    df = df[subset_var == subset_val]
+    churn = df[,
+               .(entrance_rate = NA_mean(as.numeric(time_var == birth_var)),
+                 exit_rate = NA_mean(as.numeric(time_var == max(time_var)))),
+               by = .(group_var, time_var)] %>%
+      .[time_var == max_time, exit_rate := NA_real_] %>%
+      .[,churn_rate := .5*(entrance_rate + exit_rate)]
+    
+    
+    variance_1 = df[,.(de_trended_variance_ind_lvl = sub_regression(int_var, time_var, asr = T),
+                       variance_ind_lvl = var(int_var)), by = .(ind_var, group_var)] %>%
+      .[, lapply(.SD, NA_mean), .SDcols = c('de_trended_variance_ind_lvl', 'variance_ind_lvl'), by = group_var]
+    
+    
+    variance_2 = df[,logged := logged_version] %>%
+      .[,.(int_var = ifelse(logged, asinh(NA_sum(sinh(int_var))),NA_sum(int_var))), by = .(group_var, logged, time_var)]  %>%
+      .[, .(de_trended_variance_group_lvl = sub_regression(int_var, time_var, asr = T),
+            variance_group_lvl = var(int_var)), by = .(group_var)]
+    
+    temp = merge(churn, variance_1, all = T) %>% merge(variance_2, all = T) %>% 
+      select(-c(entrance_rate, churn_rate, exit_rate)) %>% 
+      rename_with(.cols = -c(group_var, time_var), ~(paste0(prefix,.))) %>% 
+      rename(!!group_id := group_var, !!time_id := time_var)
+    if(logged_version) names(temp) = gsub('variance', 'log_variance', names(temp))
+    if(!is.na(subset_id)){temp[[subset_id]] = subset_val}
+    return(temp)
+  }) %>% rbindlist()
+  if(full_dataset){return(merge(df_og,temp, all.x = T, by = c(group_id, time_id)))}else{return(temp)}
+  
+}
+
+trend_metrics<-function(dt, vars_to_trend, vars_weight, time_var){
+  setDT(dt)
+  
+  dt<-dt[, {
+    
+    res<-list()
+    for(v in vars_to_trend){
+      x<-get(v)
+      res[[paste0(v, "_mean_unwtd")]] <- mean(x, na.rm=T)
+      for(w in vars_weight){
+        wt<-get(w)
+        res[[paste0(v, "_mean_", w)]] <- sum(x*wt, na.rm=T)/sum(wt[!is.na(x)], na.rm=T)
+      }
+    }
+    res
+  }, by=time_var]
+  
+  setorder(dt, year)
+  return(dt)
+  
 }
 
 
