@@ -23,13 +23,13 @@ end
 if size(networks,1) == 1 & ~isequal(networks,[1,1] )
     relax = 0;
 else
-    relax = .9 * ones(size(V));
+    relax = 0 * ones(size(V));
     if steady_down
-        relax(problem_indices) = .99;
-        relax(garbage_indices) = .995;
+        %relax(problem_indices) = .99;
+        %relax(garbage_indices) = .995;
     else
-        relax(problem_indices) = .995;
-        relax(garbage_indices) = .999;
+        %relax(problem_indices) = .995;
+        %relax(garbage_indices) = .999;
     end
 end
 v = relax .* v + (1 - relax) .* V;

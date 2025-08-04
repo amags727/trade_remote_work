@@ -7,16 +7,14 @@ dbstop if error
 %% setup 
 params = dh0_set_invariant_params();
 params.networks = [1,0;1,1];
-params.eq_crit = 1e-1;
+params.y = [10,10];
 
+output_ss = find_symmetric_ss(params, 1.25529);
 
-output_ss = find_symmetric_ss(params, 6.46206);
-
-function output = find_symmetric_ss(params, demand0)
-
+function output = find_symmetric_ss(params, P0)
     % Define bounds (adjust upper bound if needed)
-    lb = 1e-6;
-    ub = 1.1*demand0;  % Example heuristic for upper bound
+    lb = .8*P0;
+    ub = 1.15*P0; % Example heuristic for upper bound
 
     % Optimization options
     opts = optimset('Display', 'off', 'TolX', 1e-6, 'TolFun', 1e-6);
@@ -24,18 +22,15 @@ function output = find_symmetric_ss(params, demand0)
     % Run optimization
     output = [];
     [output.demand_opt, ~] = fminbnd(@objective_wrapper, lb, ub, opts);
-
-
-
     % Objective wrapper with caching
-    function value = objective_wrapper(demand)
+    function value = objective_wrapper(P)
         l_params = params;
-        l_params.x_scale_factor = demand*ones(1,2);
- 
-        persistent cache  % Holds past {demand, v} pairs
+        l_params.P = [P,P];
+
+        persistent cache  % Holds past {P, v} pairs
         % Search for close match in cache
         if ~isempty(cache)
-            distances = cellfun(@(entry) abs(demand - entry.demand), cache);
+            distances = cellfun(@(entry) abs(P - entry.P), cache);
             [~, idx] = min(distances);
             v_0 = cache{idx}.v;
             output = dh10_LCP_inner_loop(v_0, l_params);
@@ -44,10 +39,10 @@ function output = find_symmetric_ss(params, demand0)
             output  = dh10_LCP_inner_loop(v_hjb, l_params);
         end
         value = abs(output.entrance_v - params.ec(1));
-        fprintf('demand = %g; excess value = %g\n',demand, output.entrance_v - params.ec(1))
+        fprintf('P = %g; time to enter market 2 = %g; excess value = %g\n',P,output.market_2_entrance_t, output.entrance_v - params.ec(1))
 
         % Update cache
-        new_entry = struct('demand', demand, 'v', output.v);
+        new_entry = struct('P', P, 'v', output.v);
         if isempty(cache)
             cache = {new_entry};
         else

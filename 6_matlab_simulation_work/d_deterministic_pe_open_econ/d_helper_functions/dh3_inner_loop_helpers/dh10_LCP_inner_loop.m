@@ -5,6 +5,7 @@ fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
 
 % Set PE variables 
+x_scale_factor = y.*(gamma_tilde*w).^(-params.gamma).*P.^(params.gamma-1);
 x_bar = x_scale_factor*phi_g^params.gamma; % base demand 
 pi_bar = x_bar*w_g*phi_g^-1*(params.gamma-1)^-1; % base profits 
 E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
@@ -53,11 +54,12 @@ for n = 1:maxit
     % 
     if dist(n) < crit
         if length(int_indices_old) == len_Sigma
-            fprintf('LCP Converged, Iteration = %g\n', n); converged =  true; break
+            %fprintf('LCP Converged, Iteration = %g\n', n);
+            converged =  true; break
         else
             int_indices = 1:len_Sigma;
         end
-    elseif n == maxit; fprintf('HJB failed to converge \n'); converged = false;
+    elseif n == maxit; fprintf('LCP failed to converge \n'); converged = false;
     end
 end
 
@@ -70,11 +72,19 @@ preferred_network = repmat(1:num_networks, len_Sigma,1).*(reshape(z,[],num_netwo
 % set the initial values of Sigma and network 
 Sigma_t = Sigma(len_Sigma,:); network_t = 1; drift_mag = Inf; drift_crit = 1e-3;
 [indices, weights] = dh4_interp_box(Sigma_t, Sigma, 2);
-
+graph_output = zeros(1e5,11); t =1;
 while drift_mag > drift_crit
+    graph_output(t,:) = [network_t,Sigma_t([1,3]),1 - Sigma_t([1,3])./Sigma(len_Sigma,[1,3]),...
+        sum(weights.*(E_pi(indices,:,network_t) - optim.L(indices, :,network_t)*w)),... % profits w/o entry costs 
+        sum(E_x(indices,:,network_t).*weights),... % output
+        sum(optim.L(indices,:,network_t).*weights)]; % L
+
+    if t ~=1 && network_t == 2 && graph_output(t-1, 1) == 1
+        graph_output(t,6) = graph_output(t,6) - ec(2);
+    end
+
     drift_t = sum(optim.drift(indices,:,network_t).*weights);
     drift_mag = sum(drift_t(:,[1,3]).^2);
-
     Sigma_t = Sigma_t + drift_t*1/Delta;
     [indices, weights] = dh4_interp_box( Sigma_t, Sigma, 2);
     best_score = -inf; best_network = 1; pref_base = [preferred_network(indices,network_t),weights];
@@ -85,12 +95,15 @@ while drift_mag > drift_crit
         end
     end
     network_t = best_network;
+    t = t+1;
 end
+graph_output = graph_output(1:(find(graph_output(:,1)==0,1,"first")-1),:);
 v_ss = sum(v(indices,network_t).*weights);
 A_tilde_out = sum(A_tilde(indices,:).*weights);
 entrance_v = v(len_Sigma, 1);
+market_2_entrance_t = find(graph_output(:,1) ==2,1,'first');
 network_ss = network_t;
-output_names = {'v', 'optim','preferred_network','network_ss','A_tilde_out', 'entrance_v', 'optim', 'v_ss'};
+output_names = {'v', 'optim','graph_output','network_ss','A_tilde_out', 'entrance_v', 'v_ss', 'market_2_entrance_t'};
 output = struct();for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 
 

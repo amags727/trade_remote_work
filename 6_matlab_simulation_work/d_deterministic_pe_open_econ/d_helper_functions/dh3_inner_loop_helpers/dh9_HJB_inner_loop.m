@@ -5,6 +5,7 @@ fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
 
 % Set PE variables 
+x_scale_factor = y.*(gamma_tilde*w).^(-params.gamma).*P.^(params.gamma-1);
 x_bar = x_scale_factor*phi_g^params.gamma; % base demand 
 pi_bar = x_bar*w_g*phi_g^-1*(params.gamma-1)^-1; % base profits 
 E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);

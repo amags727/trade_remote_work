@@ -12,7 +12,9 @@ for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); en
 
 %% === PE setup ===
 params.networks = [1,0;1,1];
-params.x_scale_factor = [10,10];
+params.y = [10,10];
+params.P = [1.2712, 1.2712];
+
 if ~exist('output','var')
     v_hjb_init = dh9_HJB_inner_loop(zeros(len_Sigma, num_networks),params);
     output  = dh10_LCP_inner_loop(v_hjb_init, params);
