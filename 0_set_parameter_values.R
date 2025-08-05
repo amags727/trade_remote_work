@@ -46,7 +46,7 @@ dummy_version = getwd() != "C:/Users/Public/Documents/Big data Project";
   if (dummy_version){for (path in con_fil(ls(), 'path')){assign(path, gsub('1) data', '1a) dummy data', get(path)))}}
   
   
-  analysis_round = 4
+  analysis_round = 5
   output_base = paste0('3) output/',letters[analysis_round],"_round_",analysis_round,"_analysis/")
   suppressWarnings(dir.create(output_base))
   raw_output_dir = paste0(output_base,letters[analysis_round],"1_raw_output/")
@@ -67,18 +67,6 @@ set.seed(43)
 
 
 # project specific helper functions  --------------------------------------
-## NB we're not currently using the churn rates function 
-calc_churn_rates = function(df, group_var, birth_var, death_var, time_var, prefix){
-  df[, (paste0(prefix, "_entrance_rate")) := as.numeric(NA_mean(get(time_var) == get(birth_var))),   by = c(group_var, time_var)] %>%
-    .[, (paste0(prefix, "_exit_rate"))     := as.numeric(NA_mean(get(time_var) == get(death_var))),  by = c(group_var, time_var)] %>% 
-    # .[, (paste0(prefix, "_immediate_failure_rate")) :=as.numeric(NA_mean(ifelse(get(time_var)==get(birth_var), get(birth_var) == (get(death_var)*get(time_var)), NA))), by=c(group_var, time_var)] %>%
-    .[,(paste0(prefix, "_churn_rate")) := as.numeric(0.5 * (get(paste0(prefix, "_entrance_rate")) + get(paste0(prefix, "_exit_rate"))))] %>%
-    .[, (paste0(prefix, "_immediate_failure_rate_year_to_year")) :=as.numeric(NA_sum(get(birth_var)==(get(death_var)*get(time_var)))/NA_sum(get(time_var)==get(birth_var))), by = c(group_var, time_var)] %>%
-    .[, (paste0(prefix, "_immediate_failure_rate_avg_over_time")) :=as.numeric(NA_mean(get(paste0(prefix, "_immediate_failure_rate_year_to_year")))), by = group_var]
-
-  return(df)
-}
-
 numeric_firmid = function(df){
   if(getwd() == "C:/Users/Public/Documents/Big data Project"){
   merge(df, import_file('1) data/0_misc_data/0b_dictionaries/0b1_matched_firm_dict.parquet'), by = 'firmid') %>% select(-firmid)
@@ -90,7 +78,8 @@ numeric_ctry = function(df){
   merge(df, import_file('1) data/0_misc_data/0b_dictionaries/0b2_ctry_dict.parquet', col_select = c('ctry', 'ctry_num')), by = 'ctry') %>% select(-ctry)
 }
 de_dummy = function(string){ gsub("1a) dummy data/99_fake_output","3) output", string)}
-## PRESERVE INITIAL STATE OF AFFAIRS 
+
+#PRESERVE INITIAL STATE OF AFFAIRS   --------------------------------------
 needed_for_import = c(gpaste(c('current_',''), c('import', 'export'), '_', c('name','dir')), 'code_to_run', 'i')
 base_env = c(ls(),'base_env', needed_for_import )
 

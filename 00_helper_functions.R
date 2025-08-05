@@ -995,52 +995,6 @@ NA_coef_var = function(x){
   NA_sd(x)/NA_mean(x)
 }
 
-variance_metrics = function(df,subset_id = NA, remove_NA_subset = T, 
-                            time_id, group_id, ind_id, int_id, birth_id,
-                            logged_version = T,prefix = "", full_dataset = T){
-  df_og = df
-  df$time_var = df[[time_id]]; df$group_var = df[[group_id]];
-  df$int_var = df[[int_id]]; df$birth_var = df[[birth_id]]
-  df$ind_var = df[[ind_id]]
-  max_time = NA_max(df$time_var)
-  
-  if (logged_version) df$int_var = asinh(df$int_var)
-  if(!is.na(subset_id)){df$subset_var = df[[subset_id]]}else{df$subset_var = 1}
-  if(remove_NA_subset){df = df[!is.na(subset_var)]}
-  
-  
-  temp = lapply(unique(df$subset_var), function(subset_val){ 
-    df = df[subset_var == subset_val]
-    churn = df[,
-               .(entrance_rate = NA_mean(as.numeric(time_var == birth_var)),
-                 exit_rate = NA_mean(as.numeric(time_var == max(time_var)))),
-               by = .(group_var, time_var)] %>%
-      .[time_var == max_time, exit_rate := NA_real_] %>%
-      .[,churn_rate := .5*(entrance_rate + exit_rate)]
-    
-    
-    variance_1 = df[,.(de_trended_variance_ind_lvl = sub_regression(int_var, time_var, asr = T),
-                       variance_ind_lvl = var(int_var)), by = .(ind_var, group_var)] %>%
-      .[, lapply(.SD, NA_mean), .SDcols = c('de_trended_variance_ind_lvl', 'variance_ind_lvl'), by = group_var]
-    
-    
-    variance_2 = df[,logged := logged_version] %>%
-      .[,.(int_var = ifelse(logged, asinh(NA_sum(sinh(int_var))),NA_sum(int_var))), by = .(group_var, logged, time_var)]  %>%
-      .[, .(de_trended_variance_group_lvl = sub_regression(int_var, time_var, asr = T),
-            variance_group_lvl = var(int_var)), by = .(group_var)]
-    
-    temp = merge(churn, variance_1, all = T) %>% merge(variance_2, all = T) %>% 
-      select(-c(entrance_rate, churn_rate, exit_rate)) %>% 
-      rename_with(.cols = -c(group_var, time_var), ~(paste0(prefix,.))) %>% 
-      rename(!!group_id := group_var, !!time_id := time_var)
-    if(logged_version) names(temp) = gsub('variance', 'log_variance', names(temp))
-    if(!is.na(subset_id)){temp[[subset_id]] = subset_val}
-    return(temp)
-  }) %>% rbindlist()
-  if(full_dataset){return(merge(df_og,temp, all.x = T, by = c(group_id, time_id)))}else{return(temp)}
-  
-}
-
 trend_metrics<-function(dt, vars_to_trend, vars_weight, time_var){
   setDT(dt)
   

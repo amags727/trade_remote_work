@@ -16,25 +16,23 @@ if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list 
 source('2) code/0_set_parameter_values.R')
 
 # make extended gravity data  --------------------------------------------------------
-making_extended_grav = F
+making_extended_grav = T
 if (making_extended_grav){
   firm_yr = import_file(firm_yr_path) %>% within_group_filter(., 'any(currently_export_customs == T)', 'firmid_num')
   
-  export_vars = c('firmid_num', 'ctry_num', 'year', 'exim', 'value','products')
+  export_vars = c('firmid_num', 'ctry_num','streak_id', 'year', 'exim', 'value','products')
   export_data = import_file(raw_customs_firm_lvl_path, col_select = export_vars) %>%
-    .[exim == 2 & year %in% year_range] %>% .[,exim := NULL] %>% rename(export_rev_customs= value)
+    .[exim == 2 & year %in% year_range] %>% .[,exim := NULL] %>% rename(export_rev_customs= value) 
   
   export_ctries = distinct(export_data, ctry_num)
-  expansion_base =  merge(firm_yr[,.(firmid_num, year)], firm_yr %>% distinct(firmid_num))
+  expansion_base = unique(rbind(export_data[,.(firmid_num, year)], firm_yr[,.(firmid_num, year)]))
   
   vars_to_cond = c('products', 'export_rev_customs')
-  temp = merge(expansion_base[, dummy :=1], export_ctries[, dummy := 1], allow.cartesian = T, by = 'dummy') %>% .[,dummy := NULL] %>%
+  temp = expansion_base[, .(ctry_num = export_ctries$ctry_num), by = .(firmid_num, year)] %>%
     merge(export_data, all.x = T, by = c('firmid_num','year', 'ctry_num')) %>% 
     .[, (paste0(vars_to_cond, '_cond')) := lapply(.SD, function(x) ifelse(x == 0, NA, x)), .SDcols =vars_to_cond] %>%
     .[, (vars_to_cond) := lapply(.SD, function(x) replace_na(x, 0)), .SDcols =vars_to_cond] %>% 
     .[, currently_export_customs := export_rev_customs > 0]
-  
-  
   
   ## generate extended gravity and gravity 
   french_distances = import_file(similiarity_dir, 'outputs/france_distance_data.csv') 
@@ -46,14 +44,18 @@ if (making_extended_grav){
   for (x in grav_cats) assign(gpaste(x, '_list'), similiarity_data[[paste0('share_',x)]][1][[1]]) # france is index 1 of similiarity data 
   temp[,(paste0('grav_', grav_cats)) := lapply(paste0(grav_cats, "_list"), function(x) ctry_num %in% get(x))]
   temp =  merge(temp, french_distances, all.x = T, by = 'ctry_num')  %>% rename(grav_dist = distance_to_france_km)
-  
+
   ## add extended gravity
   extended_grav_data = rbindlist(lapply(2:nrow(similiarity_data), function(i){
     print(i/nrow(similiarity_data))
     mkt =  similiarity_data$ctry_num[i]
+    
+    ## generate the country specific lists of distances / gravity compatriots 
     temp_distances = overall_distances[o_ctry_num == mkt & d_ctry_num != mkt] %>% rename(ctry_num = d_ctry_num, temp_dist = distance_km) %>% select(ctry_num, temp_dist)
     for (x in grav_cats) assign(gpaste(x, '_list'), setdiff(similiarity_data[[paste0('share_',x)]][i][[1]],mkt ))
-    sub_temp = temp[, in_mkt := any(ctry_num == mkt & currently_export_customs), by = .(firmid_num,year)][in_mkt == T & currently_export_customs == T] %>% merge(temp_distances, by = 'ctry_num', all.x = T) %>% 
+    
+    ## assign the extended grav variables based on mkts where the firm operates 
+    sub_temp = temp[ctry_num == mkt | currently_export_customs == T] %>% merge(temp_distances, by = 'ctry_num', all.x = T) %>% 
       .[, c(setNames(lapply(paste0(grav_cats, "_list"), function(x) any(ctry_num %in% get(x))), paste0('extended_grav_', grav_cats)),
             setNames(NA_min(temp_dist), 'extended_grav_dist')),by = .(firmid_num,year)] %>%
       .[, ctry_num := mkt]
@@ -62,9 +64,9 @@ if (making_extended_grav){
     .[, paste0('extended_grav_', grav_cats) := lapply(grav_cats, function(x) replace_na(get(paste0('extended_grav_', x)),F))] %>% 
     .[, extended_grav_dist := replace_na(extended_grav_dist,Inf)] %>% 
     .[, (paste0('either_grav_', grav_cats)) := lapply(grav_cats, function(x) get(paste0('grav_', x)) | get(paste0('extended_grav_', x)))] %>%
-    .[, either_grav_dist := grav_dist] %>% .[extended_grav_dist < grav_dist, either_grav_dist := extended_grav_dist] 
-  
-  
+    .[, either_grav_dist := grav_dist] %>% .[extended_grav_dist < grav_dist, either_grav_dist := extended_grav_dist] %>%
+    mutate(across(con_fil(.,'grav_dist'), ~asinh(.), .names = 'log_{.col}'))
+
   write_parquet(temp, extended_grav_path)
   rm(list= setdiff(ls(), base_env)); gc()
 }
@@ -72,7 +74,6 @@ if (making_extended_grav){
 # import files  --------------------------------------------------------
 extended_grav = import_file(extended_grav_path) 
 
-customs_age_data = import_file(firm_ctry_lvl_birth_path) %>% .[exim ==2] %>% .[,exim := NULL]
 vars_to_any = gpaste(c('currently_export', 'nace_share_export', 'is_first_export_year','log_years_since_first_export_year'),'_customs')
 firm_yr = import_file(firm_yr_path) %>% rename_with(.cols = vars_to_any, ~paste0(., '_any_ctry')) %>% 
   select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total',
@@ -82,11 +83,18 @@ firm_yr = import_file(firm_yr_path) %>% rename_with(.cols = vars_to_any, ~paste0
   .[, `:=`(num_firms = .N, num_exporters = NA_sum(currently_export_customs_any_ctry)), by = year] %>% 
   .[,  `:=`(nace_num_firms = .N, nace_num_exporters =  NA_sum(currently_export_customs_any_ctry)), by = .(NACE_BR, year)]
 
+age_data = import_file(firm_lvl_birth_path, col_select = c('firmid_num','first_import_year', 'first_export_year_customs', 'birth_year'))
+customs_age_data = import_file(firm_ctry_lvl_birth_path, col_select = c('firmid_num', 'ctry_num', 'streak_id', 'streak_start', 'streak_end', 'country_entrance_year')) %>% 
+  rename(ctry_entrance_year = country_entrance_year)
 
 # merge clean and output ------------------------------------------------
 vars_to_log = c('export_rev_customs', 'num_other_mkts', 'years_since_first_export_year', 'years_since_streak_start')
 output = merge(firm_yr, extended_grav, by = c('firmid_num', 'year')) %>% 
-  merge(customs_age_data, by = c('firmid_num', 'ctry_num')) %>%
+  
+  ## add age data 
+  merge(age_data, by = c('firmid_num')) %>% 
+  merge(customs_age_data, all.x = T, by = c('firmid_num', 'ctry_num', 'streak_id')) %>%
+  .[, ctry_entrance_year := NA_min(ctry_entrance_year), by = .(firmid_num, ctry_num)] %>%   
   
   ## generate popularity vars 
   .[, `:=`(ctry_pop = NA_sum(currently_export_customs) / num_firms, 
@@ -96,57 +104,56 @@ output = merge(firm_yr, extended_grav, by = c('firmid_num', 'year')) %>%
            nace_ctry_pop_among_exports = NA_sum(currently_export_customs) / nace_num_exporters), by = .(year, NACE_BR, ctry_num)] %>% 
   
   ## add info on time in mkt 
-  .[year >= country_entrance_year,  years_since_first_export_year := year - country_entrance_year] %>% 
+  .[year >= ctry_entrance_year,  years_since_first_export_year := year - ctry_entrance_year] %>% 
   .[year >= streak_start, years_since_streak_start := year - streak_start] %>% 
   .[, is_streak_death := year == streak_end] %>% 
   
   ## misc vars 
   .[,num_other_mkts := num_mkts - currently_export_customs] %>% 
-  .[, paste0('log_', vars_to_log) := lapply(vars_to_log, function(x) asinh(get(x)))]
+  .[, paste0('log_', vars_to_log) := lapply(vars_to_log, function(x) asinh(get(x)))] 
 
-  ## add variance information
-  if (dummy_version){ ## the regressions will fail if we use dummy data 
-    detrended_vars = gpaste('log_export_rev_customs', c('', '_cond'),'_detrended_var')
-    output[, (detrended_vars) := runif(.N)]
-  }else{
-    command_1 = 'feols(output, log_export_rev_customs~ years_since_first_export_year| firmid_num + year + ctry_num)'
-    command_2 = 'feols(output, log_export_rev_customs~ years_since_streak_start| firmid_num + year + ctry_num)'
-    models = list(eval(parse(text = command_1)), eval(parse(text = command_2)))
-    for (i in 1:2){
-      var_name = gpaste('log_export_rev_customs', ifelse(i==1, '', '_cond'), "_detrended_var")
-      non_dropped_obs = setdiff(1:nrow(output),-1*models[[i]]$obs_selection$obsRemoved)
-      output[non_dropped_obs, (var_name) := models[[i]]$residuals^2]
-    }}
+# add variance information ------------------------------------------------
+# generate measures of de-trended variance of each firm per year 
+detrended_vars = gpaste('log_export_rev_customs_cond_detrended_var', c('', '_wo_ctry_fe'))
+if (dummy_version){ output[, (detrended_vars) := runif(.N)]}else{
+  command_1 = 'feols(output, log_export_rev_customs~ years_since_streak_start| firmid_num + year + ctry_num)'
+  command_2 = gsub('\\+ ctry_num', '',command_1)
+  models = list(eval(parse(text = command_1)), eval(parse(text = command_2)))
+  for (i in 1:2){
+    var_name = detrended_vars[i]
+    non_dropped_obs = setdiff(1:nrow(output),-1*models[[i]]$obs_selection$obsRemoved)
+    output[non_dropped_obs, (var_name) := models[[i]]$residuals^2]
+  }}
 
-## market-level metrics
-output[, `:=`(
-  mkt_num_exporters = uniqueN(firmid_num),
-  mkt_size_rev      = NA_sum(export_rev_customs),
-  mkt_failure_rate  = NA_sum(year == streak_start & year == streak_end) /
-    NA_sum(!is.na(streak_start + streak_end))
-), by = .(ctry_num, year)]
-output[, last_year_of_streak:=(year==streak_end)]
+# variance of market as a whole over time 
+ctry_group_var_temp = output[, .(export_rev_customs = NA_sum(export_rev_customs)) , by = .(ctry_num, year)] %>% 
+  .[, .(ctry_log_variance_group_lvl = NA_sd(asinh(export_rev_customs))), by = ctry_num]
 
-output = variance_metrics(output, time_id = 'year', group_id = 'ctry_num',
-                          ind_id = 'streak_id', int_id = 'export_rev_customs',
-                          birth_id = 'streak_start', logged_version = TRUE,
-                          prefix = 'mkt_', full_dataset = TRUE)
-output = calc_churn_rates(output, 'ctry_num', 'streak_start', 'last_year_of_streak', 'year', 'mkt')
+#avg variance of firms in each market over time 
+ctry_ind_var_temp = output[, .(ind_log_var = NA_sd(asinh(export_rev_customs_cond))), by = .(firmid_num,ctry_num, streak_id)] %>% 
+  .[, .(ctry_log_variance_ind_lvl = NA_mean(ind_log_var)), by = ctry_num]
 
-## market × industry metrics
-output[, `:=`(
-  nace_mkt_failure_rate = NA_sum(year == streak_start & year == streak_end) /
-    NA_sum(!is.na(streak_start + streak_end)),
-  nace_mkt_num_exporters = uniqueN(firmid_num),
-  nace_mkt_size_rev      = NA_sum(export_rev_customs),
-  nace_mkt = paste0(NACE_BR, ctry_num)
-), by = .(NACE_BR, year, ctry_num)]
+# avg detrended-variance of firms in each market 
+ctry_detrended_var_temp = output[, .(ctry_detrended_var_yr_to_yr = NA_mean(log_export_rev_customs_cond_detrended_var_wo_ctry_fe)), by = .(ctry_num,year)]  %>% 
+  .[, ctry_detrended_var := NA_mean(ctry_detrended_var_yr_to_yr), by = ctry_num]
 
-output = variance_metrics(output, time_id = 'year', group_id = 'nace_mkt',
-                          ind_id = 'streak_id', int_id = 'export_rev_customs',
-                          birth_id = 'streak_start', logged_version = TRUE,
-                          prefix = 'nace_mkt_', full_dataset = TRUE)[, nace_mkt := NULL]#%>% 
-output = calc_churn_rates(output, c('ctry_num','NACE_BR'), 'streak_start', 'last_year_of_streak', 'year', 'nace_mkt')
+# combine 
+output = output %>% merge(ctry_group_var_temp , by ='ctry_num') %>% 
+  merge(ctry_ind_var_temp, by ='ctry_num')  %>% 
+  merge(ctry_detrended_var_temp, by = c('ctry_num', 'year'))
+  
+# add churn information -----------------------------------------------------------------------
+churn_temp = output[year < max(year_range) & year > min(year_range), .(
+  ctry_entrance_rate_yr_to_yr = NA_mean(year == streak_start),
+  ctry_exit_rate_yr_to_yr = NA_mean(year == streak_end),
+  ctry_churn_rate_yr_to_yr = NA_mean(year == streak_end | year == streak_start),
+  ctry_immediate_failure_rate_yr_to_yr = NA_mean(year == streak_end & year == streak_start)), by = .(ctry_num, year)] %>% 
+  group_by(ctry_num) %>% mutate(across(con_fil(., 'yr_to_yr'), ~ NA_mean(.), .names = "{.col}hh")) %>% 
+  rename_with(~gsub('_yr_to_yrhh', '',.))
 
+output = merge(output, churn_temp, by = c('ctry_num', 'year'), all.x = T) 
+
+
+# export ------------------------------------------------------------------
 write_parquet(output, firm_yr_ctry_path) 
 

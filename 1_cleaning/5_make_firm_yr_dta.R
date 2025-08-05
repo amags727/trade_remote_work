@@ -21,7 +21,7 @@ age_data = import_file(firm_lvl_birth_path, col_select = age_vars)
 
 linkedin_firm_yr = import_file(linkedin_firm_yr_path) 
 
-bs_vars = c('firmid_num', 'year','dom_turnover', 'empl', 'capital', 'intangible_fixed_assets','for_turnover', 'labor_cost')
+bs_vars = c('firmid_num', 'year','dom_turnover', 'empl', 'capital', 'intangible_fixed_assets','for_turnover', 'labor_cost','turnover')
 bs_data = import_file(raw_bs_br_path,col_select = bs_vars) %>% 
   rename(total_export_rev_BS = for_turnover) %>%
   .[year %in% year_range & firmid_num %in% linkedin_firm_yr$firmid_num]
@@ -94,11 +94,8 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
   ## add in lags for overall exporter behavior 
   output = output %>% unbalanced_lag(., 'firmid_num', 'year',con_fil(., 'share_export'), 1)
   # Create capital intensity as capital to total revenue
-  output[, capital_intensity:=ifelse(dom_turnover+total_export_rev_BS==0, NA, log(capital/(dom_turnover+total_export_rev_BS)))]
+  output[, capital_intensity:=ifelse(turnover==0, NA, log(capital/(turnover)))]
   
-  
-    
-
 write_parquet(output,firm_yr_path)
 rm(list= setdiff(ls(), c(base_env))); gc()
 # generate unmatched input for summary stats ------------------------------
