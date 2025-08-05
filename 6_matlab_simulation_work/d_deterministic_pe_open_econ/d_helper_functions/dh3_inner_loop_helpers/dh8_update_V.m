@@ -24,12 +24,9 @@ if size(networks,1) == 1 & ~isequal(networks,[1,1] )
     relax = 0;
 else
     relax = 0 * ones(size(V));
-    if steady_down
-        %relax(problem_indices) = .99;
-        %relax(garbage_indices) = .995;
-    else
-        %relax(problem_indices) = .995;
-        %relax(garbage_indices) = .999;
+    if n > 25
+        relax(problem_indices) = .999;
+        relax(garbage_indices) = .9995;
     end
 end
 v = relax .* v + (1 - relax) .* V;

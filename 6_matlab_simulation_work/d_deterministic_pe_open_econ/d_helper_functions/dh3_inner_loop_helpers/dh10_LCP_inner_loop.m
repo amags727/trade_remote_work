@@ -51,7 +51,7 @@ for n = 1:maxit
     if n ==1; dist =0; end; int_indices_old = int_indices;
     [v,int_indices, dist] = dh8_update_V(v,V,params, dist, n);
 
-    % 
+    if n > 25; crit = 1e-3; end
     if dist(n) < crit
         if length(int_indices_old) == len_Sigma
             %fprintf('LCP Converged, Iteration = %g\n', n);
