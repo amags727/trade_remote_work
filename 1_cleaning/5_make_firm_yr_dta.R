@@ -32,18 +32,32 @@ export_data = import_file(raw_customs_firm_lvl_path, col_select = export_vars) %
   .[exim == 2 & year %in% year_range] %>% .[,exim := NULL] %>%
   .[,.(num_mkts = .N, total_export_rev_customs = sum(value, na.rm = T), products_per_ctry = NA_mean(products)), by = .(firmid_num, year)]
 
-
+NACE_2d_info = if(!dummy_version){ 
+  import_file("1) Data/0_misc_data/0a_nace_2d_industry_categories.csv")}else{
+    data.table(NACE_2d = 0:5, industry_category = letters[1:6]) 
+  }
 
 # prepare output  ---------------------------------------------------------
-
 suffixes = c('customs', 'BS')
 vars_to_cond = c('num_mkts', 'products_per_ctry', gpaste('total_export_rev_' ,suffixes))
 vars_to_log = c('age', 'dom_turnover',  gpaste("total_export_rev_",suffixes, c('', '_cond')),
                 gpaste(c('export_streak_age', 'years_since_first_export_year'), "_",suffixes))
 
+## add employee bins 
+bin_boundaries = c(0,50, 100, 200, 500, 1000, Inf); num_bins = length(bin_boundaries) -1
+bin_labels = rep('', num_bins); for (i in 1:num_bins) bin_labels[i] = paste0(bin_boundaries[i],'-', bin_boundaries[i+1])
+bin_labels[num_bins] = paste0(bin_boundaries[num_bins], '+')
+bs_data = bs_data %>% arrange(empl) %>% mutate(bs_data, 
+  empl_bin = cut(empl, breaks = bin_boundaries,labels = bin_labels, include.lowest =T, right = T))
+
+## add nace_2d info 
+linkedin_firm_yr = linkedin_firm_yr %>% 
+  .[, NACE_2d := as.integer(substr(as.character(str_pad(NACE_BR, 4, side="left", pad="0")), 1, 2))] %>% 
+  merge(NACE_2d_info, all.x = T)
+
+
 
 output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>% 
-
   ## merge in process/age data
   merge(age_data, by = 'firmid_num', all.x = T) %>% 
   .[, age := year - birth_year] %>% remove_if_NA('age') %>% 
@@ -87,10 +101,14 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
       var_name = gpaste('log_total_export_rev_',suffix, ifelse(i==1, '', '_cond'), "_detrended_var")
       non_dropped_obs = setdiff(1:nrow(output),-1*models[[i]]$obs_selection$obsRemoved)
       output[non_dropped_obs, (var_name) := models[[i]]$residuals^2]
-      output[, paste0('nace_avg_', var_name):= NA_mean(get(var_name)), by = .(NACE_BR, year)]
-    }
+      }
   }
   }
+  ## add size adjusted comp data (metric for how unusual data comp is for a firm of that size)
+  model = feols(data = output, log_comp_data ~ asinh(turnover) + I(asinh(turnover)^2))
+  non_dropped_obs =  setdiff(1:nrow(output),-1*model$obs_selection$obsRemoved)
+  output[non_dropped_obs, size_adjusted_comp_data := model$residuals] 
+  
   ## add in lags for overall exporter behavior 
   output = output %>% unbalanced_lag(., 'firmid_num', 'year',con_fil(., 'share_export'), 1)
   # Create capital intensity as capital to total revenue
