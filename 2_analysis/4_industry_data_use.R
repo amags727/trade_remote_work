@@ -15,231 +15,70 @@ rm(list = ls()); gc();
 
 ## import helper functions 
 source('2) code/0_set_parameter_values.R')
-
-output_industry_data_use<-paste0(finished_output_dir)
-if(!dir.exists(output_industry_data_use)){
-  dir.create(output_industry_data_use)
-}
-
-base_vars <- c('turnover', 'capital', 'intangible_fixed_assets', 'empl', 'age', 'comp_weighted_prestige')
-# linkedin_vars =  gpaste(c("", 'share_'), 'comp_', c('data', 'stem', 'rnd', 'engineer'))
-linkedin_vars =  gpaste(c("", 'share_'), 'comp_', c('data'))
-linkedin_vars = c(linkedin_vars, "comp_total")
-
-base_data <- import_file(firm_yr_path)
-NACE_2d_info<- import_file("1) Data/0_misc_data/0a_nace_2d_industry_categories.csv")
-
-base_data[, NACE_BR:=str_pad(NACE_BR, 4, side="left", pad="0")]
-base_data[, NACE_2d := as.integer(substr(as.character(NACE_BR), 1, 2))]
-base_data<-merge(base_data, NACE_2d_info, by="NACE_2d", all.x = T)
-base_data[, Industry_Category:=factor(Industry_Category, levels=unique(NACE_2d_info$Industry_Category))][
-  , year:=factor(year)
-]
-
-
-# 4a) data intensity and concentration per industry ---------------
-
-data_usage <- base_data[, lapply(.SD, mean, na.rm = TRUE),
-                        by = .(Industry_Category),
-                        .SDcols = linkedin_vars]
-
-metrics<-list(mean=function(x) mean(x, na.rm=T),
-              top10=function(x){
-                x<-x[!is.na(x)]
-                top_n <- ceiling(0.1*length(x))
-                mean(sort(x, decreasing=T)[1:top_n])/mean(x)
-              },
-              hhi=function(x){
-                x<-x[!is.na(x)]
-                s<-x/sum(x)
-                sum(s^2)
-              })
-results_list<-lapply(names(metrics), function(name){
-  dt<-base_data[, lapply(.SD, metrics[[name]]), by=Industry_Category, .SDcols=linkedin_vars]
-  dt[, dimension:=name]
-  return(dt)
-})
-
-result_table<-rbindlist(results_list)
-setcolorder(result_table, c("Industry_Category", "dimension", linkedin_vars))
-fwrite(result_table, paste0(output_industry_data_use, "4a_industry_comp_mean_hhi_top10.csv"))
-
-# 4b) data intensity and young firm share per industry ---------------
-
-# Calculate share of young firms and average data usage at industry-year level
-share_young <- base_data[, .(
-  total_firms = .N,
-  young_firms = sum(young, na.rm = TRUE)
-), by = .(NACE_BR, year)][
-  , share_young := young_firms / total_firms]
-
-data_usage <- base_data[, lapply(.SD, mean, na.rm = TRUE),
-                        by = .(NACE_BR, year),
-                        .SDcols = linkedin_vars]
-
-ind_young_data_use <- merge(share_young, data_usage, by = c("NACE_BR", "year"))
-
-# Ensure base_data has 2-digit NACE codes
-ind_young_data_use[, NACE_BR:=str_pad(NACE_BR, 4, side="left", pad="0")]
-table(nchar(ind_young_data_use$NACE_BR))
-ind_young_data_use[, NACE_2d := as.integer(substr(as.character(NACE_BR), 1, 2))]
-ind_young_data_use<-merge(ind_young_data_use, NACE_2d_info, by="NACE_2d", all.x = T)
-ind_young_data_use[, Industry_Category:=factor(Industry_Category, levels=unique(NACE_2d_info$Industry_Category))][
-  , year:=factor(year)
-]
-
-
-setDT(ind_young_data_use)
-ind_young_data_use<-ind_young_data_use[total_firms>=4, - "young_firms"]
-fwrite(ind_young_data_use, paste0(output_industry_data_use, "4b_ind_young_data_use.csv"))
-
-# 4c) graphs key variables by pctile of data intensity ---------------
-
-data_rd_vars =  gpaste(c("", 'share_', "log_"), 'comp_', c('data', 'rnd'))
-total_vars = c("comp_total", "log_comp_total")
-stem_engineer_vars =  gpaste(c("", 'share_'), 'comp_', c('stem', 'engineer'))
-revenue_vars = gpaste(c("", "log_"),  c('dom_turnover', 'total_export_rev_customs'))
-pct_vars<-gpaste(c("", "share_"),"comp_data_nace_percentile", c("", "_age"))
-
-
-d_vars = c("comp_data", "share_comp_data")
-divisions_list = list(list('nace', c('NACE_BR', 'year')),list('nace_exporter', c('NACE_BR', 'currently_export', 'year'))) 
-
-for (i in 1:length(divisions_list)){inner = divisions_list[[i]][[1]]; outer = ''; group = divisions_list[[i]][[2]]
-for (j in 1:2){if (j ==2){outer = "_age"; group = c(group,'young')}
-  
-  print(gpaste(d_vars,"_", inner,'_percentile', outer))
-  base_data = base_data %>% 
-    .[, (gpaste(d_vars,"_", inner,'_percentile', outer)) := lapply(d_vars, function(x) as.factor(ntile(get(x), 100))), by = group] 
-}}
-
-
-for(pct_var in pct_vars){
-  
-  path<-paste0(output_industry_data_use, "non_disag/", pct_var, "/")
-  if(!dir.exists(path)){
-    dir.create(path)
-  }
-  
-  summary_pct<-base_data[, lapply(.SD, mean, na.rm=T), .SDcols=c(base_vars, data_rd_vars, stem_engineer_vars, revenue_vars, total_vars), by=pct_var]
-  summary_pct<-summary_pct[!is.na(get(pct_var))]
-  summary_pct<-summary_pct[, (pct_var):=as.numeric(as.character(get(pct_var)))]
-
-  for(var in c(base_vars, data_rd_vars, stem_engineer_vars, revenue_vars, total_vars)){
-    ggplot(summary_pct, aes(x=.data[[pct_var]], y=.data[[var]])) + 
-      geom_point() +
-      # geom_smooth(method="rlm", se=F, color="blue") +
-      labs(x=tools::toTitleCase(gsub("_", " ", pct_var)), y=tools::toTitleCase(gsub("_", " ", var))) +
-      scale_x_continuous(breaks=seq(0, 100, by=25)) + 
-      theme_minimal()  
-      # ggtitle(paste0("Product Entry Rates by Firm-",  j, " ", distrib_text),
-      #         subtitle=paste0("Product Entry Variable: ", new_var))
-    
-    ggsave(paste0(paste0(path, "4c_", var, "_", pct_var, "_rank.png")), height=4, width = 8)
-    
-  }
-  
-}
-
-base_data[, data_category:=fifelse(Industry_Category %in% c("Info & Comms", "Finance", "Professional Services"),
-                                   "Comms, Finance & Prof. Services",
-                                   fifelse(Industry_Category=="Utilities", "Utilities", "Rest"))]
-base_data[, data_category:=as.factor(data_category)]
-
-for(pct_var in c("comp_data_nace_percentile", "share_comp_data_nace_percentile", "comp_data_nace_percentile_age", "share_comp_data_nace_percentile_age")){
-  
-  # base_data[, N:=.N, by=.(get(pct_var), data_category)]
-  base_data[, N_total:=.N, by=get(pct_var)]
-  # base_data[, weight:=N/N_total]
-  
-  
-  path<-paste0(output_industry_data_use, "disag/", pct_var, "/")
-  if(!dir.exists(path)){
-    dir.create(path)
-  }
-  
-  summary_pct<-base_data[, lapply(.SD, function(x) sum(x/N_total, na.rm=T)), 
-                         .SDcols=c(base_vars, data_rd_vars, stem_engineer_vars, revenue_vars, total_vars), 
-                         by=.(get(pct_var), data_category)]
-  summary_pct<-summary_pct[!is.na(get)]
-  summary_pct<-summary_pct[, get:=as.numeric(as.character(get))]
-
-  for(var in c(base_vars, data_rd_vars, stem_engineer_vars, revenue_vars, total_vars)){
-    ggplot(summary_pct, aes(x=get, y=.data[[var]], fill=data_category)) + 
-      geom_bar(stat="identity", position="stack") +
-      # scale_y_continuous(labels=scales::percent_format()) +
-      # geom_smooth(method="rlm", se=F, color="blue") +
-      labs(x=tools::toTitleCase(gsub("_", " ", pct_var)), y=tools::toTitleCase(gsub("_", " ", var))) +
-      scale_x_continuous(breaks=seq(0, 100, by=25)) +
-      theme_minimal()  + 
-      theme(legend.position = "bottom", legend.direction = "horizontal")
-    # ggtitle(paste0("Product Entry Rates by Firm-",  j, " ", distrib_text),
-    #         subtitle=paste0("Product Entry Variable: ", new_var))
-    
-    ggsave(paste0(paste0(path, var, "_", pct_var, "_rank.png")), height=4, width = 8)
-    
-  }
-  
-}
-
-# 4d) ------------------------
-
-employment_thresholds<-c(0,50, 100, 200, 500, 1000)
-
-
-for(var in linkedin_vars){
-  
-  data_usage<-data.table(Industry_Category=unique(NACE_2d_info$Industry_Category))
-  
-    for(i in employment_thresholds){
-    
-    data_usage_temp <- base_data[empl>i, lapply(.SD, mean, na.rm = TRUE),
-                                 by = .(Industry_Category),
-                                 .SDcols = var]
-    
-    data_usage<-merge(data_usage, data_usage_temp, by="Industry_Category", suffixes = c("", paste0("_", i)), all.x = T)
-    
+# import data and set up for analysis -----------------------------------
+NACE_2d_info = if(!dummy_version){ 
+    import_file("1) Data/0_misc_data/0a_nace_2d_industry_categories.csv")}else{
+    data.table(NACE_2d = 0:5, industry_category = letters[1:6]) 
     }
+
+## merge in the industry category info 
+base_data <- import_file(firm_yr_path) %>% 
+  .[, NACE_BR:=str_pad(NACE_BR, 4, side="left", pad="0")] %>% 
+  .[, NACE_2d := as.integer(substr(as.character(NACE_BR), 1, 2))] %>% 
+  merge(NACE_2d_info) %>% .[, `:=`(
+  industry_category=factor(industry_category, levels=unique(NACE_2d_info$industry_category)),
+  year=factor(year))]
+
+## add employee bins 
+bin_boundaries = c(0,50, 100, 200, 500, 1000, Inf); num_bins = length(bin_boundaries) -1
+bin_labels = rep('', num_bins); for (i in 1:num_bins) bin_labels[i] = paste0(bin_boundaries[i],'-', bin_boundaries[i+1])
+bin_labels[num_bins] = paste0(bin_boundaries[num_bins], '+')
+base_data = base_data %>% arrange(empl) %>% mutate(base_data, 
+  empl_bin = as.factor(cut(empl, breaks = bin_boundaries,labels = bin_labels, include.lowest =T, right = T)))
+
+# setup output dir 
+industry_output_dir = paste0(finished_output_dir,'4_industry_results')
+suppressWarnings(dir.create(industry_output_dir, recursive = T))
+# construct plots of data use x industry ---------------------------------
+filter_lvl = 100;
+collapsed_data = base_data[, 
+  share_comp_data_cond := ifelse(comp_data>0, share_comp_data, NA)] %>%  .[, .(
+  unique_firms = uniqueN(firmid_num),
+  share_comp_data = NA_mean(share_comp_data),
+  share_comp_data_cond = NA_mean(share_comp_data_cond),
+  use_data = NA_mean(use_data)),  by = .(industry_category,empl_bin)] %>% 
+  group_by(empl_bin) %>% mutate(across(con_fil(.,'data'), ~frank(-.), .names = '{col}_ord')) %>%
+  ungroup() %>% as.data.table()
+
+variations = expand(c('share_comp_data','share_comp_data_cond','use_data'), c(F,T), c(F,T), 
+  names = c('var','filter', 'ord')) %>% 
   
-  setnames(data_usage, 
-           old=names(data_usage)[(names(data_usage)!="Industry_Category")],
-           new=paste0(">", employment_thresholds))
+  # assign var name based on interest var / ordinal 
+  .[,var_name := case_when(grepl('use', var) ~ 'share firms using data',
+                       grepl('cond', var)~ 'data share of payroll (data users)',
+                       T ~ 'data share of payroll')] %>% 
+  .[ord == T, `:=`(var = paste0(var,"_ord"),var_name = paste0('rank: ', var_name))] %>%
   
-  data_usage<-melt(data_usage,
-                   id.vars="Industry_Category",
-                   variable.name="threshold",
-                   value.name = "value") %>%
-    .[, rank:=frank(-value, ties.method = "first"), by=threshold] %>%
-    .[, threshold:=factor(threshold, levels=paste0(">", employment_thresholds), ordered = T)]
+  # generate output path 
+  .[, out_path := paste0('/4',rep(letters[1:3],each = 4), rep(1:4, 3),"_", var)] %>% 
+  .[filter == T, out_path := paste0(out_path, '_filter')]
+
+# generate all the graphs 
+for (i in 1:nrow(variations)){
+  for (name in names(variations)) assign(name, variations[[name]][i])
+  graph_dta = collapsed_data[unique_firms > ifelse(filter, filter_lvl, 0)] 
+  # gen base graph 
+   graph = ggplot(graph_dta, aes(x = as.numeric(empl_bin), y = graph_dta[[var]], color = industry_category)) +
+    geom_line() + theme_minimal() +
+    labs(x = 'Num. Employees', y = var_name, color = 'NACE-2') +
+    scale_x_continuous(breaks = seq_along(levels(graph_dta$empl_bin)), labels = levels(graph_dta$empl_bin))
   
-  ggplot(data_usage, aes(x=threshold, y=rank, group=Industry_Category, color=Industry_Category)) + 
-    geom_line(size=1) + 
-    geom_point(size=2) +
-    geom_text(
-      data=data_usage[threshold==">0"],
-      aes(label = Industry_Category),
-      hjust = 1.1,
-      size=4,
-      show.legend=FALSE) +
-    scale_y_reverse(breaks=seq_len(max(data_usage$rank))) + 
-    scale_x_discrete(expand=expansion(add=c(1.2, 0.1)))+
-    labs(title="Industry Data Intensity Rank Across Employment Thresholds",
-         subtitle = tools::toTitleCase(gsub("_", " ", var)),
-         x="Employment Threshold",
-         y="Rank (1 = Highest)",
-         color="Industry") +
-      theme_minimal(base_size=14) + 
-      theme(
-        legend.position = "none",
-        axis.ticks.y=element_blank(),
-        panel.grid.minor.y = element_blank(),
-        panel.grid.major.y = element_blank()
-      )
-  
-  ggsave(paste0(output_industry_data_use, "4d_industry_", var, "_rank_by_employment.png"), width=12, height=9)
-  
+  # if ordinal version reverse the y axis 
+  if (ord) graph = graph +scale_y_reverse()
+   
+  # export
+  ggsave(paste0(industry_output_dir, out_path, '.png'), graph, height = 4, width = 5)
 }
 
 
-
-
+  
