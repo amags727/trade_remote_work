@@ -76,7 +76,7 @@ extended_grav = import_file(extended_grav_path)
 
 vars_to_any = gpaste(c('currently_export', 'nace_share_export', 'is_first_export_year','log_years_since_first_export_year'),'_customs')
 firm_yr = import_file(firm_yr_path) %>% rename_with(.cols = vars_to_any, ~paste0(., '_any_ctry')) %>% 
-  select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total',
+  select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total', 'empl', 'empl_bin',
            'share_empl_college', 'use_data','use_data_lag1','num_mkts', 'last_observed',"capital_intensity",
            con_fil(con_fil(., 'log', 'nace_comp_data_quartile', 'any_ctry'), 'BS', 'detrended', inc =F))) %>%
   .[,firmid_year_num := as.numeric(as.factor(paste0(firmid_num,"_", year)))] %>% 

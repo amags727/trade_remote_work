@@ -16,25 +16,7 @@ rm(list = ls()); gc();
 ## import helper functions 
 source('2) code/0_set_parameter_values.R')
 # import data and set up for analysis -----------------------------------
-NACE_2d_info = if(!dummy_version){ 
-    import_file("1) Data/0_misc_data/0a_nace_2d_industry_categories.csv")}else{
-    data.table(NACE_2d = 0:5, industry_category = letters[1:6]) 
-    }
-
-## merge in the industry category info 
-base_data <- import_file(firm_yr_path) %>% 
-  .[, NACE_BR:=str_pad(NACE_BR, 4, side="left", pad="0")] %>% 
-  .[, NACE_2d := as.integer(substr(as.character(NACE_BR), 1, 2))] %>% 
-  merge(NACE_2d_info) %>% .[, `:=`(
-  industry_category=factor(industry_category, levels=unique(NACE_2d_info$industry_category)),
-  year=factor(year))]
-
-## add employee bins 
-bin_boundaries = c(0,50, 100, 200, 500, 1000, Inf); num_bins = length(bin_boundaries) -1
-bin_labels = rep('', num_bins); for (i in 1:num_bins) bin_labels[i] = paste0(bin_boundaries[i],'-', bin_boundaries[i+1])
-bin_labels[num_bins] = paste0(bin_boundaries[num_bins], '+')
-base_data = base_data %>% arrange(empl) %>% mutate(base_data, 
-  empl_bin = as.factor(cut(empl, breaks = bin_boundaries,labels = bin_labels, include.lowest =T, right = T)))
+base_data <- import_file(firm_yr_path) %>% arrange(empl) %>% mutate(empl_bin= factor(empl_bin, levels = unique(empl_bin)))
 
 # setup output dir 
 industry_output_dir = paste0(finished_output_dir,'4_industry_results')

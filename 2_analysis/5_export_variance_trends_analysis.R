@@ -17,7 +17,7 @@ if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list 
 source('2) code/0_set_parameter_values.R')
 
 
-firm_yr = import_file(firm_yr_path)
+firm_yr = import_file(firm_yr_path) 
 
 year_start<-2009
 
