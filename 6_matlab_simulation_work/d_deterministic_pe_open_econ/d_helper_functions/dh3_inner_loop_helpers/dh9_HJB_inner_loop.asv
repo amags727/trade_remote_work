@@ -6,10 +6,11 @@ for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); en
 
 % Set PE variables 
 tau_vec = [1,tau];
-gamma = params.gamma;
 p = (gamma_tilde* w * tau_vec ./phi_g);
-x_bar = y.*p.^(-gamma).*P.^(gamma-1);
-pi_bar = x_bar.* p./gamma;
+x_bar = y.*p.^(-gamma).*P.^(gamma-1)
+x_scale_factor = y.*(gamma_tilde*w).^(-params.gamma).*P.^(params.gamma-1);
+x_bar = x_scale_factor*phi_g^params.gamma; % base demand 
+pi_bar = x_bar*w_g*phi_g^-1*(params.gamma-1)^-1; % base profits 
 E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
 E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits (not accounting for fixed costs; data labor)
 xi = Sigma_pen*alpha_1*phi_d.*E_x.^alpha_2;

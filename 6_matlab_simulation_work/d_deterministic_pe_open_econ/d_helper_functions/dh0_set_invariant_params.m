@@ -10,7 +10,7 @@ phi_g = 1;
 foreign_cost_scaling = 1.02; %fc * fixed_cost_scaling = foreign market fixed costs 
 fc_base = 3.0051;
 fc = fc_base *[1,foreign_cost_scaling];
-ec = .01*ones(1,2); % entry costs to market 
+ec = .015*ones(1,2); % entry costs to market 
 rev_ec = repmat(5,1, num_mkts); % exit costs from market 
 w_g = 1; % wage for production workers
 gamma = 4;     % CES parameter (from BEJK)
@@ -33,7 +33,7 @@ sigma_a = repmat(1.1,1,num_mkts); % sd of noise term
 rho = 0.05; %discount rate
 Delta = 1000; % 1/Delta = time_step
 crit = 1e-4; % acceptable value for HJB / LCP convergence  
-maxit = 5e2;
+maxit = 1e2;
 
 % Gen state space 
 [Q,D,Sigma] = make_state_space(num_mkts,I, lambda_tilde, sigma_z, theta);

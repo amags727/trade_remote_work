@@ -13,14 +13,15 @@ for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); en
 %% === PE setup ===
 params.networks = [1,0;1,1];
 params.y = [10,10];
-params.P = [1.2712, 1.2712];
+params.P = [1.25, 1.25];
 
 if ~exist('output','var')
     v_hjb_init = dh9_HJB_inner_loop(zeros(len_Sigma, num_networks),params);
-    output  = dh10_LCP_inner_loop(v_hjb_init, params);
+    output  = dh10_LCP_inner_loop(v_hjb_init, params,true);
 else
-    output  = dh10_LCP_inner_loop(output.v, params);
+    output  = dh10_LCP_inner_loop(output.v, params,true);
 end
+
 fprintf('v_end - ec = %g\n',output.v(len_Sigma,1)-ec(1));
 fprintf('network_ss = %g\n',output.network_ss);
 fprintf('percent diff ss to init: %g\n', (output.v_ss - output.v(len_Sigma,1)) / output.v(len_Sigma,1))

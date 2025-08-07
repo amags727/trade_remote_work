@@ -1,13 +1,15 @@
-function output = dh10_LCP_inner_loop(v, params)
+function output = dh10_LCP_inner_loop(v, params, graph_analysis)
 
 % unpack params
 fields = fieldnames(params); % Get the field names of the structure
 for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); end
 
 % Set PE variables 
-x_scale_factor = y.*(gamma_tilde*w).^(-params.gamma).*P.^(params.gamma-1);
-x_bar = x_scale_factor*phi_g^params.gamma; % base demand 
-pi_bar = x_bar*w_g*phi_g^-1*(params.gamma-1)^-1; % base profits 
+tau_vec = [1,tau];
+gamma = params.gamma;
+p = (gamma_tilde* w * tau_vec ./phi_g);
+x_bar = y.*p.^(-gamma).*P.^(gamma-1);
+pi_bar = x_bar.* p./gamma;
 E_x = x_bar.*A_tilde.* permute(networks, [3 2 1]);
 E_pi = pi_bar.*A_tilde.* permute(networks, [3 2 1]); % Expected working profits (not accounting for fixed costs; data labor)
 xi = Sigma_pen*alpha_1*phi_d.*E_x.^alpha_2;
@@ -62,51 +64,62 @@ for n = 1:maxit
     elseif n == maxit; fprintf('LCP failed to converge \n'); converged = false;
     end
 end
-
-%% === Find the SS value of A_tilde ===
-
-% for each network at each state, determine which network is optimal net of switching costs 
-preferred_network = repmat(1:num_networks, len_Sigma,1).*(reshape(z,[],num_networks)>0) +...
-                    best_alt.*(reshape(z,[],num_networks) ==0);
-
-% set the initial values of Sigma and network 
-Sigma_t = Sigma(len_Sigma,:); network_t = 1; drift_mag = Inf; drift_crit = 1e-3;
-[indices, weights] = dh4_interp_box(Sigma_t, Sigma, 2);
-graph_output = zeros(1e5,11); t =1;
-while drift_mag > drift_crit
-    graph_output(t,:) = [network_t,Sigma_t([1,3]),1 - Sigma_t([1,3])./Sigma(len_Sigma,[1,3]),...
-        sum(weights.*(E_pi(indices,:,network_t) - optim.L(indices, :,network_t)*w)),... % profits w/o entry costs 
-        sum(E_x(indices,:,network_t).*weights),... % output
-        sum(optim.L(indices,:,network_t).*weights)]; % L
-
-    if t ~=1 && network_t == 2 && graph_output(t-1, 1) == 1
-        graph_output(t,6) = graph_output(t,6) - ec(2);
-    end
-
-    drift_t = sum(optim.drift(indices,:,network_t).*weights);
-    drift_mag = sum(drift_t(:,[1,3]).^2);
-    Sigma_t = Sigma_t + drift_t*1/Delta;
-    [indices, weights] = dh4_interp_box( Sigma_t, Sigma, 2);
-    best_score = -inf; best_network = 1; pref_base = [preferred_network(indices,network_t),weights];
-    for network = 1:num_networks
-        score = sum(pref_base(pref_base(:,1) == network, 2));
-        if score > best_score
-            best_score = score; best_network = network;
-        end
-    end
-    network_t = best_network;
-    t = t+1;
-end
-graph_output = graph_output(1:(find(graph_output(:,1)==0,1,"first")-1),:);
-v_ss = sum(v(indices,network_t).*weights);
-A_tilde_out = sum(A_tilde(indices,:).*weights);
 entrance_v = v(len_Sigma, 1);
-market_2_entrance_t = find(graph_output(:,1) ==2,1,'first');
-network_ss = network_t;
-output_names = {'v', 'optim','graph_output','network_ss','A_tilde_out', 'entrance_v', 'v_ss', 'market_2_entrance_t'};
+output = struct();
+output_names = {'v', 'optim','entrance_v', 'p','P'};
 output = struct();for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 
+%% === Find the SS value of A_tilde ===
+if graph_analysis
+    preferred_network = repmat(1:num_networks, len_Sigma,1).*(reshape(z,[],num_networks)>0) +...
+        best_alt.*(reshape(z,[],num_networks) ==0);
 
+    % set the initial values of Sigma and network
+    Sigma_t = Sigma(len_Sigma,:); network_t = 1; drift_mag = Inf; drift_crit = 7e-3;
+    [indices, weights] = dh4_interp_box(Sigma_t, Sigma, 2); max_tsteps = 1e4;
+    graph_output = zeros(max_tsteps,12); t =1;
+    while drift_mag > drift_crit & t < max_tsteps
+        graph_output(t,:) = [network_t,Sigma_t([1,3]),1 - Sigma_t([1,3])./Sigma(len_Sigma,[1,3]),...
+            sum(weights.*optim.profit_w_actions(indices,network_t)), ...
+            sum(weights.*(E_pi(indices,:,network_t) - optim.L(indices, :,network_t)*w)) - fc.*networks(network_t,:),... % profits w/o entry costs
+            sum(E_x(indices,:,network_t).*weights),... % output
+            sum(optim.L(indices,:,network_t).*weights)]; % L
+
+        if t > 40
+            old_range = t-39:t-20;
+            new_range = t-19: t;
+            if max(abs(mean(graph_output(old_range, [2,3])) - mean(graph_output(new_range, [2,3])))) < 1e-4
+                break
+            end
+        end 
+
+        if t ~=1 && network_t == 2 && graph_output(t-1, 1) == 1
+            graph_output(t,6) = graph_output(t,6) - ec(2);
+        end
+
+        drift_t = sum(optim.drift(indices,:,network_t).*weights);
+        drift_mag = sum(abs(drift_t(:,[1,3])));
+        Sigma_t = Sigma_t + drift_t*1/Delta;
+        [indices, weights] = dh4_interp_box( Sigma_t, Sigma, 2);
+        best_score = -inf; best_network = 1; pref_base = [preferred_network(indices,network_t),weights];
+        for network = 1:num_networks
+            score = sum(pref_base(pref_base(:,1) == network, 2));
+            if score > best_score
+                best_score = score; best_network = network;
+            end
+        end
+        network_t = best_network;
+        t = t+1;
+    end
+    if t == max_tsteps; disp('firm never reached a ss'); end
+    network_ss = network_t;
+    graph_output = graph_output(1:(find(graph_output(:,1)==0,1,"first")-1),:);
+    v_ss = sum(v(indices,network_t).*weights);
+    A_tilde_out = sum(A_tilde(indices,:).*weights).*networks(network_ss,:);
+    market_2_entrance_t = find(graph_output(:,1) ==2,1,'first');
+    output_names = {'graph_output','network_ss','A_tilde_out', 'v_ss', 'market_2_entrance_t', 'p','P'};
+    for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
+end
 end
 
 %% HELPER FUNCTIONS
@@ -144,13 +157,8 @@ q = -vec + B*vstar_stacked;
 z0 = v_stacked - vstar_stacked;
 l = zeros(size(v_stacked));
 u = Inf*ones(size(v_stacked));
-z = pathlcp(B,q,l,u,z0); %LCP(B,q,l,u,z0,0);
+z = pathlcp(B,q,l,u,z0);
 
-% LCP_error = max(abs(z.*(B*z + q)));
-% if LCP_error > 10^(-5)
-%     z = LCP(B,q,l,u,z,0);
-%     fprintf('LCP not solved: error = %g\n', LCP_error);
-% end
 % update the value function
 V= reshape(z+ vstar_stacked, [], num_networks);
 z = reshape(z, [], num_networks);
