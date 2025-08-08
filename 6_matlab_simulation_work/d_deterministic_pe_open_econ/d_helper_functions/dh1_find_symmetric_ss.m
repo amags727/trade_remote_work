@@ -1,64 +1,11 @@
-clear all; close all; clc;
-addpath(genpath('../b_helper_functions'));
-addpath(genpath('d_helper_functions'))
-addpath(genpath('d_output'))
-dbstop if error
-
-%% setup 
-params = dh0_set_invariant_params();
-params.networks = [1,0;1,1];
-params.y = [10,10];
-P0 = 1.25;
-eq_crit = 1e-3;
-P = P0; cache = {};
-
-[value, cache] = eval_P(P,cache, params); value_new = Inf;
-if value > 0; adjust = .999; else; adjust = 1.001; end
-while all([abs(value), abs(value_new )] > eq_crit)
-P_new = P*adjust;
-[value_new, cache] = eval_P(P_new,cache, params);
-if value_new*value < 0
-    if(abs(value_new) < abs(value))
-        adjust = 1+ (1-adjust);
-        value = value_new;
-        P = P_ne
-        disp('hi')
-    end
-    adjust = .9*adjust + .1;
-else
-    value = value_new;
-    P = P_new;
-end
-end
-disp('hi')
-function [value, cache] = eval_P(P, cache, params)
-params.P = [P,P];
-if isempty(cache)
-      v_hjb = dh9_HJB_inner_loop(zeros(params.len_Sigma, params.num_networks),params);
-      output  = dh10_LCP_inner_loop(v_hjb, params, false);
-else
-    distances = cellfun(@(entry) norm(P - entry.P), cache);
-    [~, idx] = min(distances);
-    v0 = cache{idx}.v;
-    output = dh10_LCP_inner_loop(v0, params, false);
-end
-value = output.entrance_v- params.ec(1);
-cache{end+1} = struct('P', {P}, 'v', output.v);
-fprintf('P = %g; excess value = %g\n',P, output.entrance_v - params.ec(1))
-end
-
-
-
-
-
-
-function output = find_symmetric_ss(params, P0)
+function output = dh1_find_symmetric_ss(params, P0, y)
+    params.y = [y,y];
     % Define bounds (adjust upper bound if needed)
-    lb = .95*P0;
-    ub = 1.05*P0; % Example heuristic for upper bound
+    lb = .9*P0;
+    ub = 1.1*P0; % Example heuristic for upper bound
 
     % Optimization options
-    opts = optimset('Display', 'off', 'TolX', 1e-6, 'TolFun', 1e-6);
+    opts = optimset('Display', 'off', 'TolX', 1e-10, 'TolFun', 1e-6);
 
     % Run optimization
     output = [];

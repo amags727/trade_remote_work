@@ -4,13 +4,14 @@ function [params] = dh0_set_invariant_params()
 I = 20;
 num_mkts = 2;
 num_networks = 2;
+networks = [1,0;1,1];
 
 % production parameters 
 phi_g = 1;
 foreign_cost_scaling = 1.02; %fc * fixed_cost_scaling = foreign market fixed costs 
 fc_base = 3.0051;
 fc = fc_base *[1,foreign_cost_scaling];
-ec = .015*ones(1,2); % entry costs to market 
+ec = .6*ones(1,2); % entry costs to market 
 rev_ec = repmat(5,1, num_mkts); % exit costs from market 
 w_g = 1; % wage for production workers
 gamma = 4;     % CES parameter (from BEJK)
@@ -60,7 +61,7 @@ var_names = {'I', 'num_mkts', 'num_networks', 'phi_g', 'foreign_cost_scaling', .
     'top_bottom_quality_ratio', 'sigma_z', 'theta', 'lambda_tilde', 'rho', ...
     'Delta', 'crit', 'maxit', 'Q', 'D', 'Sigma', 'Sigma_mat', ...
     'num_state_vars', 'len_Sigma', 'd_Sigma', 'diag_indeces', 'A_tilde', ...
-    'adjacency_matrix', 'sigma_a','tau','fc', 'ec', 'rev_ec', 'Sigma_pen'};
+    'adjacency_matrix', 'sigma_a','tau','fc', 'ec', 'rev_ec', 'Sigma_pen', 'networks'};
 params = struct();for i = 1:length(var_names); name = var_names{i}; params.(name) = eval(name); end
 end
 
@@ -131,24 +132,3 @@ penalty_norm = (penalty - min(penalty)) ./ (max(penalty) - min(penalty));
 A_tilde = top_bottom_quality_ratio - (top_bottom_quality_ratio - 1) * penalty_norm;
 
 end
-
-function [fc_base,ec_base, indices, weights] = set_fc_ec(sigma_a,Sigma, D,Q,initial_demand_assumption, w_g, phi_g, gamma, A_tilde,ec_multiplier, ...
-    num_mkts) 
-
-% find the steady state value of Sigma given no data purchases  
-R = diag([sigma_a(1)^(-2), 0]);
-f = @(S) reshape(D*S + S*D' + Q - S*R*S, [], 1);
-options = optimoptions('fsolve', 'Display', 'off', 'FunctionTolerance', 1e-8);
-Sigma_ss = reshape(fsolve(f, ones(num_mkts), options),[],num_mkts^2);
-if num_mkts ~= 2; disp('hard coding failure back up'); return; else; Sigma_ss = Sigma_ss([1,2,4]); end 
-[indices, weights] = dh4_interp_box(Sigma_ss, Sigma, 2);
-
-% base fixed costs guarantee zero profit in steady state given assumed
-% initial demand 
-pi_bar = initial_demand_assumption .* w_g*phi_g^-1*(gamma-1)^-1;
-pi_ss = pi_bar*sum(A_tilde(indices,1).*weights);
-fc_base = pi_ss;
-ec_base = ec_multiplier*fc_base;
-
-end
-

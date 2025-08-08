@@ -1,17 +1,6 @@
-clear all; close all; clc;
-addpath(genpath('../b_helper_functions'));
-addpath(genpath('d_helper_functions'))
-addpath(genpath('d_output'))
-dbstop if error
-
-%% setup
-params = dh0_set_invariant_params();
-params.networks = [1,0;1,1];
-params.y = [10,9.5];
-P0 = [1.25450325, 1.27779503];
+function dual_output = dh2_find_asymmetric_ss(y, P0, grid_length, num_breaks,params)
+params.y = y;
 new_cache = {};
-
-grid_length = .0005; num_breaks = 5;
 [new_cache{1}, best_value, ~] = dual_inner_loop(params, P0,{}, false);
 cutoff = 1e-6; best_P = P0;
 while best_value > cutoff
@@ -21,7 +10,7 @@ distances = cellfun(@(entry) norm(best_P - entry.P), new_cache);
 [~, idx] = min(distances);
 dual_v = new_cache{idx}.dual_v;
 [~,~,dual_output] = dual_inner_loop(params, best_P, dual_v, true);
-
+end
 
 
 function [new_cache, best_P, best_value,grid_length] = grid_iteration(params,old_cache,num_breaks, grid_length, P0)
@@ -51,7 +40,7 @@ if all((best_P > lb) & (best_P < ub))
 else
     grid_length = 1.5*grid_length;
 end
-fprintf('P = (%g, %g); value = %g; grid_length = %g\n', best_P(1), best_P(2), best_value, grid_length)
+fprintf('P = (%g, %g); value = %g\n', best_P(1), best_P(2), best_value)
 end
 
 function [cache_entry,value,dual_output] = dual_inner_loop(params, P, in_dual_v,graph_analysis)
