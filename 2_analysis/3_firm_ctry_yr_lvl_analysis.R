@@ -68,6 +68,26 @@ write_rds(model_output$model_output,paste0(raw_output_dir, "3a_ctry_lvl_baseline
 base_variations = variations[c(1,4,6,7) %>% c(., 7+.),] %>% .[,idx := .I]
 
 # 3b variation analysis  --------------------------------------------------
+interaction_vars_and_terms<-fread("var, term
+                                  nace_share_export_customs_any_ctry, share industry exporting
+                                  grav_region, gravity region
+                                  grav_border, gravity border
+                                  grav_language, gravity language
+                                  grav_dist, gravity distance
+                                  either_grav_region, either gravity region
+                                  either_grav_border, either gravity border
+                                  either_grav_language, either gravity language
+                                  either_grav_dist, either gravity distance
+                                  ctry_pop_among_exporters, country popularity 
+                                  ctry_log_variance_group_lvl, country-level total export variance
+                                  ctry_log_variance_ind_lvl, country-level avg. export variance
+                                  ctry_detrended_var_yr_to_yr, country-year-level detrended export variance
+                                  ctry_detrended_var, country-level detrended export variance
+                                  ctry_churn_rate_yr_to_yr, country-year-level exporter churn rate
+                                  ctry_churn_rate, country-level exporter churn rate
+                                  ctry_immediate_failure_rate_yr_to_yr, country-year-level export failure rate
+                                  ctry_immediate_failure_rate, country-level export failure rate")
+
 interaction_variations = rbindlist(lapply(1:nrow(interaction_vars_and_terms),function(i){
   t_variations = base_variations
   interaction = interaction_vars_and_terms$var[i]; interaction_name = interaction_vars_and_terms$term[i]

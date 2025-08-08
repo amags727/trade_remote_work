@@ -90,7 +90,7 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
 
   ## add detrended variance values 
   if (dummy_version){ ## the regressions will fail if we use dummy data 
-   detrended_vars = gpaste(c('', 'nace_avg_'),'log_total_export_rev_',suffixes, c('', '_cond'),'_detrended_var')
+   detrended_vars = gpaste('log_total_export_rev_',suffixes, c('', '_cond'),'_detrended_var')
    output[, (detrended_vars) := runif(.N)]
   }else{
   for( suffix in suffixes){
