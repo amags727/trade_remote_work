@@ -724,6 +724,8 @@ import_file <- function(..., col_select = NULL, data_table = T, char_vars = NULL
     file <- readRDS(filepath)
   } else if(grepl("\\.shp$", filepath, ignore.case = TRUE)){
     file = st_read(filepath)
+  } else if (grepl("\\.mat$", filepath, ignore.case = TRUE)){
+    file = readMat(filepath)
   } else {
     stop("Unsupported file type")
   }

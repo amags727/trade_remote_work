@@ -2,7 +2,7 @@
 packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'dplyr',
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
              'arrow', 'fixest', 'countrycode', 'survival', 'knitr', 'parallel', 'patchwork', 'scales', 'duckdb', 
-             'truncnorm','sf', 'rnaturalearth', 'geosphere', 'giscoR', 'googledrive')
+             'truncnorm','sf', 'rnaturalearth', 'geosphere', 'giscoR', 'googledrive', 'R.matlab')
 lapply(packages, function(package){tryCatch({library(package,character.only = T)}, error = function(cond){
   install.packages(package); library(package, character.only = T)
 })})
