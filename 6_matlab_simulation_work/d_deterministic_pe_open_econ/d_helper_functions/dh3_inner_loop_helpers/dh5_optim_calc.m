@@ -112,5 +112,5 @@ drift = dh2_restructure_array(drift_mat,false, num_mkts);
 % ==== generate profits and hamiltonian ====
 profit_w_actions = squeeze(sum(E_pi - w*L - fc.* permute(networks, [3, 2, 1]),2));
 ham = profit_w_actions + squeeze(sum(drift.*dv,2));
-optim = struct('L', L, 'drift', drift, 'profit_w_actions', profit_w_actions, 'ham', ham);
+optim = struct('L', L, 'drift', drift, 'profit_w_actions', profit_w_actions, 'ham', ham, 'R_vec', R_vec);
 end

@@ -1,8 +1,8 @@
 function output = dh1_find_symmetric_ss(params, P0, y)
     params.y = [y,y];
     % Define bounds (adjust upper bound if needed)
-    lb = .9*P0;
-    ub = 1.1*P0; % Example heuristic for upper bound
+    lb = .5*P0;
+    ub = 1.5*P0; % Example heuristic for upper bound
 
     % Optimization options
     opts = optimset('Display', 'off', 'TolX', 1e-10, 'TolFun', 1e-6);

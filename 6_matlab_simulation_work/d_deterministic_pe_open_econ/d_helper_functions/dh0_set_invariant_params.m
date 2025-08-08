@@ -9,15 +9,16 @@ networks = [1,0;1,1];
 % production parameters 
 phi_g = 1;
 foreign_cost_scaling = 1.02; %fc * fixed_cost_scaling = foreign market fixed costs 
-fc_base = 3.0051;
+fc_base = 1.5;
 fc = fc_base *[1,foreign_cost_scaling];
-ec = .6*ones(1,2); % entry costs to market 
+ec_multiplier =2;
+ec = ec_multiplier*fc; % entry costs to market 
 rev_ec = repmat(5,1, num_mkts); % exit costs from market 
 w_g = 1; % wage for production workers
 gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
 initial_demand_assumption = 20;
-tau = 1.0; % iceberg trade costs 
+tau = 1.005; % iceberg trade costs 
 
 %data parameters 
 w = 1; % data worker wage
@@ -49,8 +50,8 @@ adjacency_matrix = make_adjacency_matrix(len_Sigma,num_state_vars,I) ;
 A_tilde  = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
 
 % Gen Sigma Penalty 
-Sigma_pen_ratio = 2;
-Sigma_pen_curve = .75;
+Sigma_pen_ratio = 1;
+Sigma_pen_curve = 1;
 ub = Sigma(len_Sigma, [1,3]); lb = Sigma(1, [1,3]);
 Sigma_pen_scalar = (Sigma_pen_ratio - 1) *(ub.^Sigma_pen_curve - lb.^Sigma_pen_curve).^(-1);
 Sigma_pen = (1+Sigma_pen_scalar.* Sigma(:,[1,3]).^Sigma_pen_curve).^(-1);

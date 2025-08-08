@@ -69,7 +69,8 @@ output = struct();
 output_names = {'v', 'optim','entrance_v', 'p','P'};
 output = struct();for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 
-%% === Find the SS value of A_tilde ===
+%% === Perform graphical analysis ===
+
 if graph_analysis
     preferred_network = repmat(1:num_networks, len_Sigma,1).*(reshape(z,[],num_networks)>0) +...
         best_alt.*(reshape(z,[],num_networks) ==0);
@@ -77,13 +78,14 @@ if graph_analysis
     % set the initial values of Sigma and network
     Sigma_t = Sigma(len_Sigma,:); network_t = 1; drift_mag = Inf; drift_crit = 7e-3;
     [indices, weights] = dh4_interp_box(Sigma_t, Sigma, 2); max_tsteps = 1e4;
-    graph_output = zeros(max_tsteps,12); t =1;
+    graph_output = zeros(max_tsteps,14); t =1;
     while drift_mag > drift_crit & t < max_tsteps
         graph_output(t,:) = [network_t,Sigma_t([1,3]),1 - Sigma_t([1,3])./Sigma(len_Sigma,[1,3]),...
             sum(weights.*optim.profit_w_actions(indices,network_t)), ...
             sum(weights.*(E_pi(indices,:,network_t) - optim.L(indices, :,network_t)*w)) - fc.*networks(network_t,:),... % profits w/o entry costs
             sum(E_x(indices,:,network_t).*weights),... % output
-            sum(optim.L(indices,:,network_t).*weights)]; % L
+            sum(optim.L(indices,:,network_t).*weights),... % L
+            sum(optim.R_vec(indices, :,network_t).*weights)]; % R
 
         if t > 40
             old_range = t-39:t-20;
