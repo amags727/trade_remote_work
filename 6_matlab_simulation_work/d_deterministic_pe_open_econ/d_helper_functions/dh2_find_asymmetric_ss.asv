@@ -67,9 +67,10 @@ end
 v_miss = abs(max(dual_miss_val{:}));
 
 %% DETETRMINE NUM FIRMS IN MARKET 
-eta = 100
-z   = max(min(eta*(Ev - ce), 40), -40);   % clip for overflow safety
-m   = mbar * exp(z);
+eta = 100;
+m_bar = .1;
+z   = max(min(eta*[dual_miss_val{:}], 40), -40);   % clip for overflow safety
+m   = m_bar * exp(z);
 
 % smooth how 'present' each country is in the market
 dual_miss = [dual_miss_val{:}];          % 1x2, one per type

@@ -72,7 +72,7 @@ for i = 1:num_networks
 
         if dist(n) < crit
             if length(int_indices_old) == len_Sigma
-                fprintf('HJB Converged, Iteration = %g\n', n);
+                %fprintf('HJB Converged, Iteration = %g\n', n);
                 converged(i) = true;  v_out(:,i) = v; optim_list{i} = optim;
                 break
             else

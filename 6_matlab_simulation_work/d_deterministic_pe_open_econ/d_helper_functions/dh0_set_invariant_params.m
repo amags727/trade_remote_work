@@ -1,7 +1,7 @@
 function [params] = dh0_set_invariant_params()
 
 % base variables 
-I = 20;
+I = 10;
 num_mkts = 2;
 num_networks = 2;
 networks = [1,0;1,1];
@@ -45,6 +45,7 @@ len_Sigma = size(Sigma,1);
 d_Sigma =  (Sigma(len_Sigma, :) - Sigma(1,:))/(I-1);
 diag_indeces = find(ismember(find(triu(true(num_mkts), 0)),1:num_mkts+1:num_mkts^2));
 adjacency_matrix = make_adjacency_matrix(len_Sigma,num_state_vars,I) ;
+g1 = unique(Sigma(:,1)); g2 = unique(Sigma(:,2)); g3 = unique(Sigma(:,3));
 
 % Gen A_tilde 
 A_tilde  = gen_A_tilde(top_bottom_quality_ratio,Sigma, sigma_a, diag_indeces);
@@ -62,7 +63,7 @@ var_names = {'I', 'num_mkts', 'num_networks', 'phi_g', 'foreign_cost_scaling', .
     'top_bottom_quality_ratio', 'sigma_z', 'theta', 'lambda_tilde', 'rho', ...
     'Delta', 'crit', 'maxit', 'Q', 'D', 'Sigma', 'Sigma_mat', ...
     'num_state_vars', 'len_Sigma', 'd_Sigma', 'diag_indeces', 'A_tilde', ...
-    'adjacency_matrix', 'sigma_a','tau','fc', 'ec', 'rev_ec', 'Sigma_pen', 'networks'};
+    'adjacency_matrix', 'sigma_a','tau','fc', 'ec', 'rev_ec', 'Sigma_pen', 'networks', 'g1', 'g2', 'g3'};
 params = struct();for i = 1:length(var_names); name = var_names{i}; params.(name) = eval(name); end
 end
 

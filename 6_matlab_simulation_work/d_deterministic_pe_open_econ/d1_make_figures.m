@@ -18,12 +18,12 @@ pe_params = params; pe_params.y = [y,y]; pe_params.P = output.P;
 %% 2) plot the ss spend levels of different phi_g
 doing_anal_2 = false;
 if doing_anal_2
-    grid_points = 100; phi_g_vec = linspace(.9*params.phi_g, 1.1*params.phi_g,grid_points)';
-    results_mat = [phi_g_vec, zeros(grid_points,2)]; l_output = output;
+    grid_points = 100; phi_d_vec = linspace(.9*params.phi_g, 1.1*params.phi_g,grid_points)';
+    results_mat = [phi_d_vec, zeros(grid_points,2)]; l_output = output;
     parfor i =1:length(results_mat)
         disp(i)
         l_params = pe_params;
-        l_params.phi_g = phi_g_vec(i);
+        l_params.phi_g = phi_d_vec(i);
         l_output = dh10_LCP_inner_loop(output.v, l_params, true);
         results_mat(i,2:3) = l_output.graph_output(end, 11:12);
     end
@@ -46,6 +46,16 @@ doing_asym_stuff = true;
 if doing_asym_stuff
     y = [y,.95*y];
     P0 = output.P;
-    grid_length = .005; num_breaks = 5;
-    dual_output = dh2_find_asymmetric_ss(y, P0, grid_length, num_breaks, params);
+    grid_length = .005; num_breaks = 5; cutoff = 1e-3;
+    
+    grid_points = 10; phi_d_vec = linspace(params.phi_d, 1.1*params.phi_d,grid_points)';
+    results_mat = [phi_d_vec, zeros(grid_points,4)]; 
+    for i =1:length(results_mat)
+        fprintf('round %g / %g\n', i, grid_points)
+        l_params = params;
+        l_params.phi_d = results_mat(i,1);
+        [~, results_mat(i,2:3), results_mat(i,4:5)] = dh2_find_asymmetric_ss(y, P0, grid_length, num_breaks,cutoff, l_params);
+        P0 = results_mat(i,4:5); grid_length = .0005;
+    end
+    save('../../../3) output/simulation_output/raw/3_home_ctry.mat','results_mat')
 end
