@@ -29,7 +29,7 @@ collapsed_data = base_data[,
   share_comp_data = NA_mean(share_comp_data),
   share_comp_data_cond = NA_mean(share_comp_data_cond),
   size_adjusted_comp_data = NA_mean(size_adjusted_comp_data),
-  use_data = NA_mean(use_data)),  by = .(industry_category,empl_bin)] %>% 
+  use_data = NA_mean(use_data)),  by = .(Industry_Category,empl_bin)] %>% 
   group_by(empl_bin) %>% mutate(across(con_fil(.,'data'), ~frank(-.), .names = '{col}_ord')) %>%
   ungroup() %>% as.data.table()
 
@@ -49,16 +49,48 @@ for (i in 1:nrow(variations)){
   for (name in names(variations)) assign(name, variations[[name]][i])
   graph_dta = collapsed_data[unique_firms > ifelse(filter, filter_lvl, 0)] 
   # gen base graph 
-   graph = ggplot(graph_dta, aes(x = as.numeric(empl_bin), y = graph_dta[[var]], color = industry_category)) +
-    geom_line() + theme_minimal() +
+   graph = ggplot(graph_dta, aes(x = as.numeric(empl_bin), y=graph_dta[[var]], color=Industry_Category), group=Industry_Category) +
+    geom_line()  + theme_minimal() +
     labs(x = 'Num. Employees', y = var_name, color = 'NACE-2') +
-    scale_x_continuous(breaks = seq_along(levels(graph_dta$empl_bin)), labels = levels(graph_dta$empl_bin))
-  
+     theme(legend.position = "none") +
+     scale_x_continuous(expand=expansion(add=c(1.2, 0.1)),
+                        breaks = seq_along(levels(graph_dta$empl_bin)), labels = levels(graph_dta$empl_bin))+ 
+     geom_vline(xintercept = 1:5, linetype="dotted", color="grey80")+
+     theme(legend.position = "none",
+           axis.ticks.y=element_blank(),
+           panel.grid.minor.y = element_blank(),
+           panel.grid.major.y = element_blank(),
+           panel.grid.major.x = element_blank(),
+           panel.grid.minor.x = element_blank()) 
+
   # if ordinal version reverse the y axis 
-  if (ord) graph = graph +scale_y_reverse()
+  if (ord) {
+    
+    label_data <- graph_dta[empl_bin=="0-50"] %>% arrange(desc(var))
+    graph = graph + 
+      geom_text(data=label_data,
+                aes(x=as.numeric(empl_bin), y=label_data[[var]], label=Industry_Category, color = Industry_Category),
+                hjust=1.1,
+                size=3.5)+ 
+      scale_y_reverse(breaks = c(1, 5, 10, 15, 20, 25)) 
+
+  }else{
+    
+    label_data<- arrange(graph_dta, desc(get(var))) %>% .[empl_bin=="0-50"] %>% .[1:5]
+    graph = graph +
+      ggrepel::geom_text_repel(data=label_data,
+                               aes(x=as.numeric(empl_bin), y=label_data[[var]], label=Industry_Category, color = Industry_Category),
+                               hjust=1.1,
+                               size=3.5,
+                               direction="y",
+                               segment.color=NA,
+                               show.legend = F)+
+      theme(legend.position = "bottom") + 
+      labs(color="Sector")
+  }
    
   # export
-  ggsave(paste0(industry_output_dir, out_path, '.png'), graph, height = 4, width = 5)
+  ggsave(paste0(industry_output_dir, out_path, '.png'), graph, height = 5, width = 9)
 }
 
 
