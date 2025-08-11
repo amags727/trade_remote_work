@@ -26,31 +26,32 @@ base_controls =  paste("", 'log_comp_total', 'log_comp_total_lag1', 'log_dom_tur
 
 base_command = reg_command(dataset = 'firm_yr_ctry', dep_var =  'log_export_rev_customs', ind_var = 'log_comp_data + log_comp_data_lag1', 
                            controls = base_controls, fe = "| firmid_num + year + ctry_num", cluster = 'firmid_num')
-restrictions = c('', '[currently_export_customs_any_ctry == T]', '[currently_export_customs== T]')
+restrictions = c('', '[currently_export_customs_any_ctry == T]', '[currently_export_customs== T]', '[ever_export_customs==T]')
 
 
 firm_yr_ctry = import_file(firm_yr_ctry_path)
+firm_yr_ctry[, ever_export_customs:=any(currently_export_customs == T), by=.(ctry_num, firmid_num)]
 
 # 3a test different base specifications --------------------------------------------------------
 rev_variations = data.table(restriction = restrictions) %>% rowwise() %>%
   mutate(command = gsub('firm_yr_ctry', paste0('firm_yr_ctry', restriction), base_command)) %>% 
   mutate(dep_var = 'rev')
 
-currently_export_variations = data.table(restriction = restrictions[1:2]) %>% rowwise() %>% 
+currently_export_variations = data.table(restriction = restrictions[c(1, 2, 4)]) %>% rowwise() %>% 
   mutate(command = gsub('firm_yr_ctry', paste0('firm_yr_ctry', restriction), base_command)) %>% mutate(command = 
-   gsub('feols', 'feglm', command) %>% gsub(')', ", family = 'binomial')",.) %>%  # update the regression type 
-   gsub('log_export_rev_customs', 'currently_export_customs',.)) %>% # update the dep var 
+                                                                                                         gsub('feols', 'feglm', command) %>% gsub(')', ", family = 'binomial')",.) %>%  # update the regression type 
+                                                                                                         gsub('log_export_rev_customs', 'currently_export_customs',.)) %>% # update the dep var 
   mutate(dep_var = 'currently_export')
 
 streak_death_variations = data.table(command = base_command %>% 
-   gsub('feols', 'feglm', .) %>% gsub(')', ", family = 'binomial')",.) %>%  # update the regression type 
-   gsub('log_export_rev_customs', 'is_streak_death',.) %>% # update the dep var
-   gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
+                                       gsub('feols', 'feglm', .) %>% gsub(')', ", family = 'binomial')",.) %>%  # update the regression type 
+                                       gsub('log_export_rev_customs', 'is_streak_death',.) %>% # update the dep var
+                                       gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
   mutate(dep_var = 'streak_death')
 
 detrended_var_variations = data.table(command = base_command %>% 
-  gsub('log_export_rev_customs', 'log_export_rev_customs_cond_detrended_var',.) %>% # update the dep var                            
-  gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
+                                        gsub('log_export_rev_customs', 'log_export_rev_customs_cond_detrended_var',.) %>% # update the dep var                            
+                                        gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
   mutate(dep_var = 'detrended_var')
 
 variations = rbindlist(list(rev_variations, currently_export_variations, streak_death_variations, detrended_var_variations), use.names = T, fill = T)  %>% 
