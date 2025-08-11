@@ -1,7 +1,7 @@
 function [params] = dh0_set_invariant_params()
 
 % base variables 
-I = 10;
+I = 20;
 num_mkts = 2;
 num_networks = 2;
 networks = [1,0;1,1];

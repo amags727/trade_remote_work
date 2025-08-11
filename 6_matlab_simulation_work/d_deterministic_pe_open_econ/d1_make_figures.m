@@ -12,7 +12,7 @@ output = dh1_find_symmetric_ss(params, P0,12); ss = output.graph_output(end,:); 
 %fprintf('ss certainty levels: (%g, %g)\nss profits: (%g,%g)\nss data labor: (%g,%g)\n', ss(4:5), ss(7:8), ss(11:12))
 %fprintf('time to enter market 2: %g\n', output.market_2_entrance_t)
 save('../../../3) output/simulation_output/raw/1_base_ss_progression.mat','graph_output')
-params.sym_num_firms = .8630;
+params.sym_num_firms = output.num_firms;
 pe_params = params; pe_params.y = [y,y]; pe_params.P = output.P;
 
 %% 2) plot the ss spend levels of different phi_g
@@ -41,21 +41,22 @@ for s = scales
 end
 end
 
+
+
 %% A
 doing_asym_stuff = true;
 if doing_asym_stuff
-    y = [y,.95*y];
-    P0 = output.P;
-    grid_length = .005; num_breaks = 5; cutoff = 1e-3;
-    
-    grid_points = 10; phi_d_vec = linspace(params.phi_d, 1.1*params.phi_d,grid_points)';
-    results_mat = [phi_d_vec, zeros(grid_points,4)]; 
+    y = [y,.999*y]; P0 = output.P;
+  
+    grid_points = 20; phi_d_vec = linspace(0, params.phi_d,grid_points)';
+    results_mat = [phi_d_vec, zeros(grid_points,4)]; cutoff = 1e-2;
     for i =1:length(results_mat)
         fprintf('round %g / %g\n', i, grid_points)
         l_params = params;
         l_params.phi_d = results_mat(i,1);
-        [~, results_mat(i,2:3), results_mat(i,4:5)] = dh2_find_asymmetric_ss(y, P0, grid_length, num_breaks,cutoff, l_params);
-        P0 = results_mat(i,4:5); grid_length = .0005;
+       
+        [results_mat(i,2:3),~ ,results_mat(i,4:5)] =  dh3_looping_find_asym(y, P0, l_params, cutoff);
+        
     end
     save('../../../3) output/simulation_output/raw/3_home_ctry.mat','results_mat')
 end

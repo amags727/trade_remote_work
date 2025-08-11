@@ -3,15 +3,13 @@ params.y = y;
 new_cache = {};
 [new_cache{1}, best_value] = dual_inner_loop(params, P0,{});
 best_P = P0;
-while best_value > cutoff && grid_length > 1e-12
+while best_value > cutoff && grid_length > 1e-7
     [new_cache, best_P, best_value,grid_length] = grid_iteration(params, new_cache, num_breaks, grid_length, best_P);
 end
 distances = cellfun(@(entry) norm(best_P - entry.P), new_cache);
 [~, idx] = min(distances);
 dual_v = new_cache{idx}.dual_v;
 [~,~,~,dual_output, num_firms] = dual_inner_loop(params, best_P, dual_v);
-
-disp('hi')
 end
 
 %% WRAPPER FOR CHECKING ALL P COMBINAIONS IN THE GRID 
@@ -33,9 +31,8 @@ parfor i = 1:size(P_matrix,1)
 end
 
 % find the best value 
-[~,min_index] = min(values);
+[best_value,min_index] = min(values);
 best_P = P_matrix(min_index,:);
-best_value = sum(abs(miss_vec(min_index,:)));
 num_firms = num_firms(min_index,:);
 % update search box 
 if all((best_P > lb) & (best_P < ub))
@@ -43,7 +40,8 @@ if all((best_P > lb) & (best_P < ub))
 else
     grid_length = 1.5*grid_length;
 end
-fprintf('miss value P = %g; miss value v = %g; num_firms = (%g,%g)\n',  miss_vec(min_index,1), miss_vec(min_index,2), num_firms(1), num_firms(2));
+fprintf('grid_length = %g;value = %g; num_firms = (%g,%g)\n',...
+    grid_length,best_value, num_firms(1), num_firms(2));
 end
 
 %% WRAPPER FOR FINDING THE MISS VALUE OF AN INDIVIDUAL P POINT 
@@ -67,36 +65,22 @@ end
 v_miss = abs(max(dual_miss_val{:}));
 
 %% DETETRMINE NUM FIRMS IN MARKET 
-eta = 100
-z   = max(min(eta*(Ev - ce), 40), -40);   % clip for overflow safety
-m   = mbar * exp(z);
+eta = 100;
+m_bar = .1;
+z   = min(eta*[dual_miss_val{:}], 40);   % clip for overflow safety
+num_firms = m_bar * exp(z);
 
-% smooth how 'present' each country is in the market
-dual_miss = [dual_miss_val{:}];          % 1x2, one per type
-tau       = 1e-4;                      
-eps_floor = 1e-10;                       
-scale_adj = eps_floor + (1 - eps_floor) * exp(min(dual_miss,0) ./ tau);
-%if all(dual_miss <0)
- %   scale_adj =  scale_adj .*(1-(dual_miss == min(dual_miss)));
-%else
- %   scale_adj = 1 - (dual_miss <= 0);
-%end
-  
 
 % gen params necessary for CES price index 
 gamma = params.gamma;
 p = [dual_output{1}.p; flip(dual_output{2}.p)];
-A_1_raw = dual_output{1}.A_tilde_out .* params.networks(dual_output{1}.network_ss,:);
-A_2_raw = dual_output{2}.A_tilde_out .* params.networks(dual_output{2}.network_ss,:);
-A_1 = scale_adj(1) * A_1_raw; A_2 = scale_adj(2) * A_2_raw; A = [A_1 ; flip(A_2)];
-
-% solve the formula 
-%rhs = (P(:)).^(1-gamma); B = A .* (p.^(1-gamma)); num_firms = B\rhs; num_firms = num_firms .*(1- (num_firms<0));
-%P_resid = sum(abs(B*num_firms - rhs));
-[num_firms, P_resid] = solve_num_firms_numeric(P, A,p, params.gamma, params.sym_num_firms);
-
-miss_vec = [P_resid; max(dual_miss_val{:})];
-value = sum([P_resid; v_miss]);
+A = [dual_output{1}.A_tilde_out .* params.networks(dual_output{1}.network_ss,:);...
+     dual_output{2}.A_tilde_out .* params.networks(dual_output{2}.network_ss,:)];
+B = A .* (p.^(1-gamma)); 
+rhs = (P(:)).^(1-gamma);
+P_out = (B*num_firms').^(1/(1-gamma));
+miss_vec = B*num_firms'- rhs;
+value = sum(abs(miss_vec));
 cache_entry =  struct('P', {P}, 'dual_v', {out_dual_v});
 end
 
