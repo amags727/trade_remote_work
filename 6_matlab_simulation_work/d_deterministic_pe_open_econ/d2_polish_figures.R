@@ -19,9 +19,9 @@ d_input_dir = '3) output/simulation_output/raw/'
 d_output_dir = '3) output/simulation_output/clean/'
 
 #gen baseline graphs -------------------------------------------------------------------------
-base_graph_inputs = import_file(d_input_dir, '1_base_ss_progression.csv') %>% mutate(t = 1:nrow(.)/100) %>% 
-  select(-'pi_tot') %>%  pivot_longer(cols = -t) %>% as.data.table() %>%
-  .[,market := ifelse(grepl('1', name), '1','2')] 
+base_graph_inputs = import_file(d_input_dir, '1_base_ss_progression.csv') %>% 
+  select(-c('pi_tot','Cert_12')) %>%  pivot_longer(cols = -t) %>% as.data.table() %>%
+  .[,market := ifelse(grepl('1', name), '1','2')] %>% .[value != 0]
 
 
 profit_graph = ggplot(base_graph_inputs[grepl('pi_', name)], aes(x = t, y = value, color = market)) + 
@@ -38,15 +38,15 @@ certainty_graph = ggplot(base_graph_inputs[grepl('Cert', name)], aes(x = t, y = 
   scale_y_continuous(labels = percent_format())
 
 composite_graph = certainty_graph + x_graph + profit_graph + plot_annotation(title = 'Firm Progression to Steady State')
-ggsave(paste0(d_output_dir, 'baseline_ss_progression.png'),composite_graph, width = 10.6, height = 5.22 )
+ggsave(paste0(d_output_dir, '1_baseline_ss_progression.png'),composite_graph, width = 10.6, height = 5.22 )
 
 
 #phi_g comparison ------------------------------------------------------
-phi_graph_inputs = import_file(d_input_dir, '2_phi_g_x_data.mat')[['results.mat']] %>% as.data.table() %>% 
-  rename_with(~c('phi_g', '1', '2')) %>% pivot_longer(cols = - phi_g, names_to = 'market') %>% 
+phi_g_graph = import_file(d_input_dir, '2_phi_g_x_data.csv')  %>%
+  pivot_longer(cols = - phi_g, names_to = 'market') %>% mutate(market = gsub('l_', '', market)) %>% 
   ggplot(., aes(x = phi_g, y = value, color = market)) + geom_line() + theme_minimal()  + 
-  labs(x = expression(phi[g]), y= 'data spend', title = 'Data Spend as a Function of Manufacuturing Productivity')
-
+  labs(x = expression(phi[g]), y= 'data spend', title = 'Steady State Data Spend as a Function\nof Manufacuturing Productivity') 
+ggsave(paste0(d_output_dir, '2_phi_g_x_data.png'), phi_g_graph,width = 8.71, height = 6.19)
 # phi_d comparison  -----------------------------------------------------------------------
 phi_d_inputs = import_file(d_input_dir, '3_phi_d_x_pe_growth.csv') %>%
   pivot_longer(cols = -c(phi_d,t), names_to = 'Market') %>%

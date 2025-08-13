@@ -6,36 +6,39 @@ for idx = 1:length(fields); eval([fields{idx} ' = params.' fields{idx} ';']); en
 
 % setup the while loop
 Sigma_t = Sigma(len_Sigma,:); network_t = 1; drift_mag = Inf; drift_crit = 7e-3; max_tsteps = 1e4;
-graph_output = zeros(max_tsteps,14); t =1;
+graph_output = array2table([(1:max_tsteps)', zeros(max_tsteps,16)], 'VariableNames',...
+    {'t','network', 'Sigma_11','Sigma_12', 'Sigma_22', 'Cert_11', 'Cert_12','Cert_22',...
+    'pi_tot', 'pi_1', 'pi_2', 'x_1', 'x_2', 'l_1', 'l_2', 'R_1', 'R_2'});
 
+t = 1;
 % iterate until we hit ss 
 while (drift_mag > drift_crit) && (t < max_tsteps)
     [idx, wgt] = interp8_trilinear(Sigma_t, g1,g2,g3,I);
 
     % compute each component of graph_output
-    out  = wgt' * E_x(idx,:,network_t);
-    Lbar = wgt' * optim.L(idx,:,network_t);
-    Rbar = wgt' * optim.R_vec(idx,:,network_t);
-    
-    % calculate flow profits 
-    prof = wgt' * optim.profit_w_actions(idx, network_t);
-    Epi  = wgt' * (E_pi(idx,:,network_t) - optim.L(idx,:,network_t)*w - fc.*networks(network_t,:));
+    graph_output{t, {'network', 'Sigma_11', 'Sigma_12', 'Sigma_22'}} = [network_t, Sigma_t];
+    graph_output{t, {'x_1', 'x_2'}} = wgt' * E_x(idx,:,network_t);
+    graph_output{t, {'l_1', 'l_2'}} = wgt' * optim.L(idx,:,network_t);
+    graph_output{t, {'R_1', 'R_2'}} = wgt' * optim.R_vec(idx,:,network_t);
+    graph_output{t, 'pi_tot'} = wgt' * optim.profit_w_actions(idx, network_t);
+    graph_output{t, {'pi_1', 'pi_2'}} = wgt' * (E_pi(idx,:,network_t) - optim.L(idx,:,network_t)*w - fc.*networks(network_t,:));
     
     % account for entry 
-    %if t>1 && network_t==2 && graph_output(t-1,1)==1; prof = prof - ec(2); Epi(2) = Epi(2)- ec(2); end
+    %if t>1 && network_t==2 && graph_output{t-1,network}==1
+    %  graph_output.pi_tot(t) =graph_output.pi_tot(t) - ec(2);
+    %  graph_output.pi_2(t) = graph_output.pi_2(t) - ec(2) {t,'prof'};
+    %end 
 
-    % make graph_output  
-    graph_output(t,:) = [network_t, Sigma_t([1,3]),zeros(1,2), prof, Epi, out, Lbar, Rbar];
-
+   
     % stop if we've converged despite fluctuation around ss 
     if t > 40 && mod(t,10)==0
-        oldm = mean(graph_output(t-39:t-20,[2,3]),1);
-        newm = mean(graph_output(t-19:t,[2,3]),1);
+        oldm = mean(graph_output{t-39:t-20,{'Sigma_11','Sigma_22'}},1);
+        newm = mean(graph_output{t-19:t,{'Sigma_11','Sigma_22'}},1);
         if max(abs(oldm - newm)) < 1e-4, break; end
     end
 
      % drift step
-    drift_t  = (optim.drift(idx,:,network_t))' * wgt;  
+    drift_t  = wgt' * (optim.drift(idx,:,network_t));  
     drift_mag = sum(abs(drift_t([1,3])));
     Sigma_t   = Sigma_t + drift_t / Delta;
 
@@ -47,17 +50,15 @@ while (drift_mag > drift_crit) && (t < max_tsteps)
     t = t + 1;
 end
 if t == max_tsteps; disp('firm never reached a ss'); end
-graph_output = graph_output(1:(find(graph_output(:,1)==0,1,"first")-1),:);
-graph_output(:, 4:5) = 1- graph_output(:, 2:3)./ Sigma(end,[1,3]);
-graph_output_tbl = array2table(graph_output, 'VariableNames',...
-    {'network', 'Sigma_1', 'Sigma_2', 'Cert_1', 'Cert_2', 'pi_tot', 'pi_1', 'pi_2', 'x_1', 'x_2', 'l_1', 'l_2', 'R_1', 'R_2'});
+graph_output.t = graph_output.t /100;
+graph_output = graph_output(1:find(graph_output.network == 0, 1, 'first')-1,:);
+graph_output{:, {'Cert_11','Cert_12','Cert_22'}} = 1- graph_output{:,{'Sigma_11','Sigma_12','Sigma_22'}} ./ Sigma(end,:);
 network_ss = network_t;
 v_ss = wgt' * v(idx,network_t);
 A_tilde_out = wgt'* A_tilde(idx, :).*networks(network_ss,:);
-market_2_entrance_t = find(graph_output(:,1) ==2,1,'first');
-output_names = {'graph_output', 'network_ss','v_ss', 'A_tilde_out','market_2_entrance_t', 'graph_output_tbl'};
+market_2_entrance_t = find(graph_output.network == 2, 1 ,'first');
+output_names = {'graph_output', 'network_ss','v_ss', 'A_tilde_out','market_2_entrance_t'};
 for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
-
 end
 
 

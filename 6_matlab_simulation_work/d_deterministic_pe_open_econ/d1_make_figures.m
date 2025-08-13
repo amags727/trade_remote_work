@@ -2,7 +2,7 @@ clear all; close all; clc;
 addpath(genpath('../b_helper_functions'));
 addpath(genpath('d_helper_functions'))
 addpath(genpath('d_output'))
-%dbstop if error
+dbstop if error
 out_dir = '../../../3) output/simulation_output/raw/';
 
 %% Solve an initial GE 
@@ -13,25 +13,26 @@ if doing_initial
     params = dh0_set_invariant_params(base_lambda);
     y = sym_y;
     P0 = 1.25;
-    output = dh1_find_symmetric_ss(params, P0,12); graph_output = output.graph_output_tbl;
-    writetable(graph_output, fullfile(out_dir, '1_base_ss_progression.csv'));
+    output = dh1_find_symmetric_ss(params, P0,12); 
+    writetable(output.graph_output, fullfile(out_dir, '1_base_ss_progression.csv'));
     params.sym_num_firms = output.num_firms;
     pe_params = params; pe_params.y = [y,y]; pe_params.P = output.P;
 end
 
 %% 2) plot the ss spend levels of different phi_g
-doing_anal_2 = false;
+doing_anal_2 = true;
 if doing_anal_2
     grid_points = 100; phi_d_vec = linspace(.9*params.phi_g, 1.1*params.phi_g,grid_points)';
-    results_mat = [phi_d_vec, zeros(grid_points,2)]; l_output = output;
+    results_mat = [phi_d_vec, zeros(grid_points,2)]; 
     parfor i =1:length(results_mat)
         disp(i)
         l_params = pe_params;
         l_params.phi_g = phi_d_vec(i);
         l_output = dh10_LCP_inner_loop(output.v, l_params, true);
-        results_mat(i,2:3) = l_output.graph_output(end, 11:12);
+        results_mat(i,2:3) = l_output.graph_output{end, {'l_1', 'l_2'}};
     end
-    save('../../../3) output/simulation_output/raw/2_phi_g_x_data.mat','results_mat')
+    results_mat = array2table(results_mat,'VariableNames',{'phi_g', 'l_1','l_2'});
+    writetable(results_mat, fullfile(out_dir, '2_phi_g_x_data.csv'))
 end
 
 %% 3) Plot progression to ss at three different phi_d values 
