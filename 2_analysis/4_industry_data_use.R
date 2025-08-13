@@ -63,6 +63,6 @@ graph = lapply(1:nrow(variations),function(i){
     theme(legend.position = 'none')
   return(graph)
 })
-graph =  graph[[1]] + graph[[2]] + plot_annotation(title = 'Data Use Patterns Across Top Industries')
+graph =  graph[[1]] + graph[[2]] + plot_annotation(title = 'Data Use Patterns Across Top 5 Industries')
 ggsave(paste0(de_dummy(finished_output_dir), '4_industry_descriptives.png'),graph, width = 11.5, height = 5.2)
 

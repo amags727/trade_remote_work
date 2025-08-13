@@ -206,7 +206,7 @@ model_coef = function(model_output, dummy_version = F, cox = F){
   }
 }
 
-comp_coef_names = function(original, new, dummy_version){
+comp_coef_names = function(original, new, dummy_version = F){
   if (typeof(original) == 'list'){
     og = model_coef(original, dummy_version)
     if(is.null(og)) og = model_coef(original, T)
@@ -229,7 +229,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
                         column_names = NA, custom_rows =NA, custom_row_placement = NA,  
                         headers = NA, divisions_before = NA, notes = NA,
                         note_width = .5, output_path = NA, caption = NULL, rescale_factor = NA, spacer_size = NA,
-                        coef_order = NA, cox = F,make_pdf= T,make_tex = T, final_commands = NA_character_,
+                        coef_order = NA, cox = F,make_pdf= T,make_tex = T, final_commands = NA_character_, file_protect = F,
                         dummy_version = F){
   if(!all_NA(coef_names)) coef_names = gsub('\\\\\\&', 'specialampreplacement',coef_names)
   insert_column_space <- function(input_string,after_column, og_columns) {
@@ -488,8 +488,9 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
   
   # output table to file 
   if (!is.na(output_path)){
+    hard_write = file_protect & file.exists(output_path) &  grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())
     if (make_tex){
-      if(!file.exists(output_path) | !grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
+      if(!hard_write){
         writeLines(table, output_path)
       }else{
         writeLines(table, 'temp.tex');
@@ -503,7 +504,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
       tinytex::latexmk("temp.tex")
       pdf_path = gsub('tex', 'pdf', output_path)
       file.remove("temp.tex")
-      if(file.exists(pdf_path) & grepl('GoogleDrive-amagnuson@g.harvard.edu',getwd())){
+      if(hard_write){
         drive_update(pdf_path, 'temp.pdf')
         file.remove('temp.pdf')
       }else{

@@ -112,7 +112,7 @@ for(j in 1:nrow(interaction_vars_and_terms)){
                  custom_rows = list(""),
                  custom_row_placement = 14,
                  final_commands = paste0("table = gsub('lx', 'x',table);"),
-                 notes = "Robust Standard Errors clustered at the firm level. All Regressio ns include firm, year, and country FE.",
+                 notes = "Robust Standard Errors clustered at the firm level. All Regressions include firm, year, and country FE.",
                  note_width = .8,
                  dummy_version = dummy_version,
                  output_path =  paste0(finished_output_dir, label, '.tex'), make_tex = F )
