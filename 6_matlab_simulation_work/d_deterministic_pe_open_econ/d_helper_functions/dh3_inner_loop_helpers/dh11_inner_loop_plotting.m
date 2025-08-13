@@ -22,7 +22,7 @@ while (drift_mag > drift_crit) && (t < max_tsteps)
     Epi  = wgt' * (E_pi(idx,:,network_t) - optim.L(idx,:,network_t)*w - fc.*networks(network_t,:));
     
     % account for entry 
-    if t>1 && network_t==2 && graph_output(t-1,1)==1; prof = prof - ec(2); Epi(2) = Epi(2)- ec(2); end
+    %if t>1 && network_t==2 && graph_output(t-1,1)==1; prof = prof - ec(2); Epi(2) = Epi(2)- ec(2); end
 
     % make graph_output  
     graph_output(t,:) = [network_t, Sigma_t([1,3]),zeros(1,2), prof, Epi, out, Lbar, Rbar];
@@ -32,11 +32,6 @@ while (drift_mag > drift_crit) && (t < max_tsteps)
         oldm = mean(graph_output(t-39:t-20,[2,3]),1);
         newm = mean(graph_output(t-19:t,[2,3]),1);
         if max(abs(oldm - newm)) < 1e-4, break; end
-    end
-
-    % entry cost adjustment (only when switching 1->2 last step)
-    if t>1 && network_t==2 && graph_output(t-1,1)==1
-        graph_output(t,6) = graph_output(t,6) - ec(2);
     end
 
      % drift step
@@ -54,11 +49,13 @@ end
 if t == max_tsteps; disp('firm never reached a ss'); end
 graph_output = graph_output(1:(find(graph_output(:,1)==0,1,"first")-1),:);
 graph_output(:, 4:5) = 1- graph_output(:, 2:3)./ Sigma(end,[1,3]);
+graph_output_tbl = array2table(graph_output, 'VariableNames',...
+    {'network', 'Sigma_1', 'Sigma_2', 'Cert_1', 'Cert_2', 'pi_tot', 'pi_1', 'pi_2', 'x_1', 'x_2', 'l_1', 'l_2', 'R_1', 'R_2'});
 network_ss = network_t;
 v_ss = wgt' * v(idx,network_t);
 A_tilde_out = wgt'* A_tilde(idx, :).*networks(network_ss,:);
 market_2_entrance_t = find(graph_output(:,1) ==2,1,'first');
-output_names = {'graph_output', 'network_ss','v_ss', 'A_tilde_out','market_2_entrance_t'};
+output_names = {'graph_output', 'network_ss','v_ss', 'A_tilde_out','market_2_entrance_t', 'graph_output_tbl'};
 for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 
 end

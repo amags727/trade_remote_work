@@ -1,51 +1,56 @@
-function [dual_output, num_firms, best_P] = dh2_find_asymmetric_ss(y, P0, grid_length, num_breaks,cutoff, params)
+function [best_P, dual_output,num_firms] = dh2_find_asymmetric_ss(y, P0, params,cutoff)
+
 params.y = y; 
-new_cache = {};
-[new_cache{1}, best_value] = dual_inner_loop(params, P0,{});
-best_P = P0;
-while best_value > cutoff && grid_length > 1e-7
-    [new_cache, best_P, best_value,grid_length] = grid_iteration(params, new_cache, num_breaks, grid_length, best_P);
+new_cache = {}; P_in = P0;params.eta = 1000;
+[new_cache{1},best_value, P_out] = dual_inner_loop(params, P_in,{});
+
+for i =1
+    if i ==2; params.eta = 1000; end
+    t = 1;
+    while best_value > cutoff 
+        [new_cache,best_value, P_in, P_out] = grid_iteration(params, new_cache, P_in, P_out);
+        t = t+1;
+    end
+    best_value = Inf;
 end
-distances = cellfun(@(entry) norm(best_P - entry.P), new_cache);
+
+distances = cellfun(@(entry) norm(P_in - entry.P), new_cache);
 [~, idx] = min(distances);
 dual_v = new_cache{idx}.dual_v;
-[~,~,~,dual_output, num_firms] = dual_inner_loop(params, best_P, dual_v);
+[~,~, best_P, dual_output,num_firms] = dual_inner_loop(params, P_in, dual_v);
 end
 
 %% WRAPPER FOR CHECKING ALL P COMBINAIONS IN THE GRID 
-function [new_cache, best_P, best_value,grid_length] = grid_iteration(params,old_cache,num_breaks, grid_length, P0)
-% setup the list of P to test 
-lb = P0 - grid_length; ub = P0 + grid_length;
-P1_vals = linspace(lb(1), ub(1), num_breaks); P2_vals = linspace(lb(2), ub(2), num_breaks);
-[P1_grid, P2_grid] = ndgrid(P1_vals, P2_vals);
-P_matrix = [P1_grid(:), P2_grid(:)];  
+function [new_cache,best_value, best_P_in, best_P_out] = grid_iteration(params,old_cache,P_in, P_out)
 
-% iterate through P list 
-new_cache = cell(size(P_matrix,1),1); values = zeros(size(new_cache)); miss_vec = zeros(size(P_matrix,1),2); num_firms = miss_vec;
-parfor i = 1:size(P_matrix,1)
-    P = P_matrix(i,:);
-    distances = cellfun(@(entry) norm(P - entry.P), old_cache);
+% generate the new P matrices
+if params.eta == 100
+    relax =  [linspace(1e-4,.001,5),linspace(.001,.02,5), linspace(.02,.25,5)]'; 
+else
+    relax = unique([linspace(1e-6,1e-4,5), linspace(1e-4, .002, 5)]');
+end
+P_in_matrix = (1-relax)*P_in + (relax)*P_out;
+P_out_matrix = zeros(size(P_in_matrix));
+
+new_cache = cell(length(P_in_matrix),1);
+values = zeros(size(new_cache)); 
+parfor i = 1:size(P_in_matrix,1)
+    P_in = P_in_matrix(i,:);
+    distances = cellfun(@(entry) norm(P_in - entry.P), old_cache);
     [~, idx] = min(distances);
     dual_v = old_cache{idx}.dual_v;
-    [new_cache{i}, values(i),miss_vec(i,:), ~,num_firms(i,:)] = dual_inner_loop(params,P, dual_v);
+    [new_cache{i},values(i), P_out_matrix(i,:)] = dual_inner_loop(params, P_in,dual_v);
 end
 
-% find the best value 
 [best_value,min_index] = min(values);
-best_P = P_matrix(min_index,:);
-num_firms = num_firms(min_index,:);
-% update search box 
-if all((best_P > lb) & (best_P < ub))
-    grid_length = .5*grid_length;
-else
-    grid_length = 1.5*grid_length;
-end
-fprintf('grid_length = %g;value = %g; num_firms = (%g,%g)\n',...
-    grid_length,best_value, num_firms(1), num_firms(2));
+best_P_in = P_in_matrix(min_index,:);
+best_P_out = P_out_matrix(min_index,:);
+fprintf('value = %g, min_index = %g \n', best_value, min_index);
+
 end
 
 %% WRAPPER FOR FINDING THE MISS VALUE OF AN INDIVIDUAL P POINT 
-function [cache_entry,value, miss_vec, dual_output,num_firms] = dual_inner_loop(params, P, in_dual_v)
+function [cache_entry,value, P_out, dual_output,num_firms] = dual_inner_loop(params, P, in_dual_v)
 dual_output = cell(1,2); out_dual_v = dual_output; dual_miss_val = dual_output;
 for i = 1:2
     l_params = params;
@@ -59,46 +64,24 @@ for i = 1:2
     end
     dual_output{i} = t_output;
     out_dual_v{i} = t_output.v;
-    dual_miss_val{i} = t_output.entrance_v - params.ec(1);
+    dual_miss_val{i} = t_output.entrance_v - params.ec(1); %%% KEEP IN MIND THAT THIS WILL FAIL IF WE EVER MAKE EC DIFFERENT 
 end
-% record how far the larger entrance value is from 0
-v_miss = abs(max(dual_miss_val{:}));
 
-%% DETETRMINE NUM FIRMS IN MARKET 
-eta = 100;
+% Determine num firms in mkt 
+eta = params.eta;
 m_bar = .1;
-z   = min(eta*[dual_miss_val{:}], 40);   % clip for overflow safety
+z = max(min(eta*[dual_miss_val{:}], 20),-20); 
 num_firms = m_bar * exp(z);
 
-
-% gen params necessary for CES price index 
+% generate the output guess for the price index
 gamma = params.gamma;
 p = [dual_output{1}.p; flip(dual_output{2}.p)];
 A = [dual_output{1}.A_tilde_out .* params.networks(dual_output{1}.network_ss,:);...
-     dual_output{2}.A_tilde_out .* params.networks(dual_output{2}.network_ss,:)];
+     flip(dual_output{2}.A_tilde_out .* params.networks(dual_output{2}.network_ss,:))];
 B = A .* (p.^(1-gamma)); 
-rhs = (P(:)).^(1-gamma);
-P_out = (B*num_firms').^(1/(1-gamma));
-miss_vec = B*num_firms'- rhs;
-value = sum(abs(miss_vec));
-cache_entry =  struct('P', {P}, 'dual_v', {out_dual_v});
+P_out = (num_firms*B).^(1/(1-gamma)); 
+value = sum(abs(P_out - P));
+P_out = min(P_out, 1.5);
+cache_entry = struct('P', {P}, 'dual_v', {out_dual_v});
 end
 
-
-function [num_firms, P_resid] = solve_num_firms_numeric(P, A, p, gamma, sym_num_firms)
-    % Bounds 
-    lb = zeros(2,1); ub = 4*sym_num_firms*ones(2,1);
-    
-    % Prep
-    e = 1 - gamma;  rhs = (P(:)).^e;   B = A .* (p.^e);  
-    num_firms_0 = sym_num_firms * ones(2,1);
-
-    % Options
-    opts = optimoptions('fmincon',  'Algorithm','interior-point', ...
-        'Display','off', 'StepTolerance',1e-10,'OptimalityTolerance',1e-8);
-
-    % Solve: minimize L1 residual
-    obj = @(x) sum(abs(B*x - rhs));
-    num_firms = fmincon(obj, num_firms_0, [],[],[],[], lb, ub, [], opts);
-    P_resid = sum(abs(B*num_firms - rhs));
-end

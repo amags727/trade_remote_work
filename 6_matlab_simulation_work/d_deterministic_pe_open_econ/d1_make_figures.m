@@ -2,18 +2,22 @@ clear all; close all; clc;
 addpath(genpath('../b_helper_functions'));
 addpath(genpath('d_helper_functions'))
 addpath(genpath('d_output'))
-dbstop if error
+%dbstop if error
+out_dir = '../../../3) output/simulation_output/raw/';
 
 %% Solve an initial GE 
-params = dh0_set_invariant_params();
-y = 12;
-P0 = 1.25;
-output = dh1_find_symmetric_ss(params, P0,12); ss = output.graph_output(end,:); graph_output = output.graph_output;
-%fprintf('ss certainty levels: (%g, %g)\nss profits: (%g,%g)\nss data labor: (%g,%g)\n', ss(4:5), ss(7:8), ss(11:12))
-%fprintf('time to enter market 2: %g\n', output.market_2_entrance_t)
-save('../../../3) output/simulation_output/raw/1_base_ss_progression.mat','graph_output')
-params.sym_num_firms = output.num_firms;
-pe_params = params; pe_params.y = [y,y]; pe_params.P = output.P;
+sym_P = 0.9672; sym_y = 12;
+doing_initial = true;
+if doing_initial
+    base_lambda = .5;
+    params = dh0_set_invariant_params(base_lambda);
+    y = sym_y;
+    P0 = 1.25;
+    output = dh1_find_symmetric_ss(params, P0,12); graph_output = output.graph_output_tbl;
+    writetable(graph_output, fullfile(out_dir, '1_base_ss_progression.csv'));
+    params.sym_num_firms = output.num_firms;
+    pe_params = params; pe_params.y = [y,y]; pe_params.P = output.P;
+end
 
 %% 2) plot the ss spend levels of different phi_g
 doing_anal_2 = false;
@@ -33,30 +37,60 @@ end
 %% 3) Plot progression to ss at three different phi_d values 
 doing_anal_3 = false; 
 if doing_anal_3
-scales = [ 0.9, 1, 1.1]; results_mat = [];
+scales = [ 0.8, .9, 1]; results_mat = [];
 for s = scales
     l_params = pe_params; l_params.phi_d = s * pe_params.phi_d;
     out = dh10_LCP_inner_loop(output.v, l_params, true); g_out = out.graph_output;
-    results_mat = [results_mat; l_params.phi_d * ones(length(g_out), 1), g_out(:, 9:10)];
+    results_mat = [results_mat; [l_params.phi_d * ones(length(g_out), 1), (1:length(g_out))', g_out(:, 9:10)]];
 end
+  results_mat = array2table(results_mat, 'VariableNames',{'phi_d', 't', 'x1', 'x2'});
+  writetable(results_mat, fullfile(out_dir, '3_phi_d_x_pe_growth.csv'));
 end
 
+%% 4) Plot progression to ss at three different Lambda tilde values
+doing_anal_4 = true; 
+if doing_anal_4
+scales = [ 0.8, .9, 1]; results_mat = [];
+for s = scales
+    l_params = dh0_set_invariant_params(s*base_lambda);
+    l_params.y =  pe_params.y; 
+    l_params.P = pe_params.P;
+
+    out = dh10_LCP_inner_loop(output.v, l_params, true); g_out = out.graph_output_tbl;
+    results_mat = [results_mat; [s*base_lambda * ones(height(g_out), 1), (1:height(g_out))', g_out{:, {'x_1','x_2'}}]];
+end
+  results_mat = array2table(results_mat, 'VariableNames',{'lambda', 't', 'x1', 'x2'});
+  writetable(results_mat, fullfile(out_dir, '4_lambda_x_pe_growth.csv'));
+end
 
 
 %% A
 doing_asym_stuff = true;
-if doing_asym_stuff
-    y = [y,.999*y]; P0 = output.P;
-  
-    grid_points = 20; phi_d_vec = linspace(0, params.phi_d,grid_points)';
-    results_mat = [phi_d_vec, zeros(grid_points,4)]; cutoff = 1e-2;
-    for i =1:length(results_mat)
+if doing_asym_stuff 
+    test_lambda = .4;
+    params = dh0_set_invariant_params(test_lambda);
+    P0 = sym_P*ones(1,2);
+    grid_points = 30; phi_d_vec = linspace(0,params.phi_d*1.5,grid_points)';
+    results = [phi_d_vec, zeros(grid_points,4)]; cutoff = 1e-2; 
+    results = array2table(results, 'VariableNames',{'phi_d', 'num_firms1', 'num_firms2', 'trade_share1', 'trade_share2'});
+    
+    for i =1:height(results)
         fprintf('round %g / %g\n', i, grid_points)
         l_params = params;
-        l_params.phi_d = results_mat(i,1);
-       
-        [results_mat(i,2:3),~ ,results_mat(i,4:5)] =  dh3_looping_find_asym(y, P0, l_params, cutoff);
-        
+        y = [sym_y, 0.99922*sym_y];
+        l_params.phi_d = results.phi_d(i);
+      
+        [P_out,dual_output,num_firms] =  dh2_find_asymmetric_ss(y, P0, l_params, cutoff);
+        e_x1 =  num_firms(1) * dual_output{1}.graph_output(end,9:10);
+        e_x2 =  num_firms(2) * flip(dual_output{2}.graph_output(end,9:10));
+        trade_share = e_x1 ./(e_x1 +e_x2);
+        results{i,{'num_firms1', 'num_firms2', 'trade_share1', 'trade_share2'}} = [num_firms,trade_share];  
+        disp(results(i,:))
+        if any(trade_share >.99)
+            fprintf("market 2 dropped out")
+            break
+        end
     end
-    save('../../../3) output/simulation_output/raw/3_home_ctry.mat','results_mat')
+    results = results(1:i,:);
+    save('../../../3) output/simulation_output/raw/3_home_ctry.mat','results')
 end

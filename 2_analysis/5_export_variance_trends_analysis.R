@@ -17,8 +17,6 @@ rm(list = ls()); gc();
 source('2) code/0_set_parameter_values.R')
 
 
-
-
 # make extended version of data for variance purposes ------------------------------------------
 making_extended = T; start_year = 2000;
 extended_firm_yr_path =  '1) data/14_extended_firm_yr_variance_dta.parquet'

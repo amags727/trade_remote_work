@@ -39,19 +39,19 @@ rev_variations = data.table(restriction = restrictions) %>% rowwise() %>%
 
 currently_export_variations = data.table(restriction = restrictions[c(1, 2, 4)]) %>% rowwise() %>% 
   mutate(command = gsub('firm_yr_ctry', paste0('firm_yr_ctry', restriction), base_command)) %>% mutate(command = 
-                                                                                                         gsub('feols', 'feglm', command) %>% gsub(')', ", family = 'binomial')",.) %>%  # update the regression type 
-                                                                                                         gsub('log_export_rev_customs', 'currently_export_customs',.)) %>% # update the dep var 
+  gsub('feols', 'feglm', command) %>% gsub(')', ", family = 'binomial')",.) %>%  # update the regression type 
+  gsub('log_export_rev_customs', 'currently_export_customs',.)) %>% # update the dep var 
   mutate(dep_var = 'currently_export')
 
 streak_death_variations = data.table(command = base_command %>% 
-                                       gsub('feols', 'feglm', .) %>% gsub(')', ", family = 'binomial')",.) %>%  # update the regression type 
-                                       gsub('log_export_rev_customs', 'is_streak_death',.) %>% # update the dep var
-                                       gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
+  gsub('feols', 'feglm', .) %>% gsub(')', ", family = 'binomial')",.) %>%  # update the regression type 
+  gsub('log_export_rev_customs', 'is_streak_death',.) %>% # update the dep var
+  gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
   mutate(dep_var = 'streak_death')
 
 detrended_var_variations = data.table(command = base_command %>% 
-                                        gsub('log_export_rev_customs', 'log_export_rev_customs_cond_detrended_var',.) %>% # update the dep var                            
-                                        gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
+  gsub('log_export_rev_customs', 'log_export_rev_customs_cond_detrended_var',.) %>% # update the dep var                            
+  gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
   mutate(dep_var = 'detrended_var')
 
 variations = rbindlist(list(rev_variations, currently_export_variations, streak_death_variations, detrended_var_variations), use.names = T, fill = T)  %>% 

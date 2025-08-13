@@ -1,4 +1,4 @@
-function [params] = dh0_set_invariant_params()
+function [params] = dh0_set_invariant_params(lambda_tilde)
 
 % base variables 
 I = 20;
@@ -28,7 +28,6 @@ alpha_2 = .5; % cobb douglas coefficient on raw data
 top_bottom_quality_ratio = 2.5; % how much data helps improve quality 
 sigma_z = repmat(1.1,1,num_mkts); % variance of random component of z
 theta = .9; % mean reversion parameter of z (closer to one faster mean reversion)
-lambda_tilde = .5; % correlation coefficient between mkts 
 sigma_a = repmat(1.1,1,num_mkts); % sd of noise term
 
 % Simulation Parameters
