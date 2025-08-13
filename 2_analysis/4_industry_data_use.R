@@ -17,81 +17,52 @@ rm(list = ls()); gc();
 source('2) code/0_set_parameter_values.R')
 # import data and set up for analysis -----------------------------------
 base_data <- import_file(firm_yr_path) %>% arrange(empl) %>% mutate(empl_bin= factor(empl_bin, levels = unique(empl_bin)))
+casd_n_obs<-4
 
-# setup output dir 
-industry_output_dir = paste0(finished_output_dir,'4_industry_results')
-suppressWarnings(dir.create(industry_output_dir, recursive = T))
-# construct plots of data use x industry ---------------------------------
-filter_lvl = 100;
+# construct collapsed data to use in the plots ---------------------------------
+if (!dummy_version){
 collapsed_data = base_data[, 
-  share_comp_data_cond := ifelse(comp_data>0, share_comp_data, NA)] %>%  .[, .(
-  unique_firms = uniqueN(firmid_num),
-  share_comp_data = NA_mean(share_comp_data),
-  share_comp_data_cond = NA_mean(share_comp_data_cond),
-  size_adjusted_comp_data = NA_mean(size_adjusted_comp_data),
-  use_data = NA_mean(use_data)),  by = .(Industry_Category,empl_bin)] %>% 
+                           share_comp_data_cond := ifelse(comp_data>0, share_comp_data, NA)] %>%  .[, .(
+                             unique_firms = uniqueN(firmid_num),
+                             share_comp_data = NA_mean(share_comp_data),
+                             share_comp_data_cond = NA_mean(share_comp_data_cond),
+                             size_adjusted_comp_data = NA_mean(size_adjusted_comp_data),
+                             use_data = NA_mean(use_data)),  by = .(Industry_Category,empl_bin)] %>% 
   group_by(empl_bin) %>% mutate(across(con_fil(.,'data'), ~frank(-.), .names = '{col}_ord')) %>%
   ungroup() %>% as.data.table()
-
-variations = expand(c('share_comp_data','share_comp_data_cond','use_data', 'size_adjusted_comp_data'),
-                    c(F,T), c(F,T), names = c('var','filter', 'ord')) %>% 
-  # assign var name based on interest var / ordinal 
-  .[,var_name := case_when(grepl('use', var) ~ 'share firms using data',
-                       grepl('cond', var)~ 'data share of payroll (data users)',
-                       T ~ 'data share of payroll')] %>% 
-  .[ord == T, `:=`(var = paste0(var,"_ord"),var_name = paste0('rank: ', var_name))] %>%
-  # generate output path 
-  .[, out_path := paste0('/4',rep(letters[1:4],each = 4), rep(1:4, 4),"_", var)] %>% 
-  .[filter == T, out_path := paste0(out_path, '_filter')]
-
-# generate all the graphs 
-for (i in 1:nrow(variations)){
-  for (name in names(variations)) assign(name, variations[[name]][i])
-  graph_dta = collapsed_data[unique_firms > ifelse(filter, filter_lvl, 0)] 
-  # gen base graph 
-   graph = ggplot(graph_dta, aes(x = as.numeric(empl_bin), y=graph_dta[[var]], color=Industry_Category), group=Industry_Category) +
-    geom_line()  + theme_minimal() +
-    labs(x = 'Num. Employees', y = var_name, color = 'NACE-2') +
-     theme(legend.position = "none") +
-     scale_x_continuous(expand=expansion(add=c(1.2, 0.1)),
-                        breaks = seq_along(levels(graph_dta$empl_bin)), labels = levels(graph_dta$empl_bin))+ 
-     geom_vline(xintercept = 1:5, linetype="dotted", color="grey80")+
-     theme(legend.position = "none",
-           axis.ticks.y=element_blank(),
-           panel.grid.minor.y = element_blank(),
-           panel.grid.major.y = element_blank(),
-           panel.grid.major.x = element_blank(),
-           panel.grid.minor.x = element_blank()) 
-
-  # if ordinal version reverse the y axis 
-  if (ord) {
-    
-    label_data <- graph_dta[empl_bin=="0-50"] %>% arrange(desc(var))
-    graph = graph + 
-      geom_text(data=label_data,
-                aes(x=as.numeric(empl_bin), y=label_data[[var]], label=Industry_Category, color = Industry_Category),
-                hjust=1.1,
-                size=3.5)+ 
-      scale_y_reverse(breaks = c(1, 5, 10, 15, 20, 25)) 
-
-  }else{
-    
-    label_data<- arrange(graph_dta, desc(get(var))) %>% .[empl_bin=="0-50"] %>% .[1:5]
-    graph = graph +
-      ggrepel::geom_text_repel(data=label_data,
-                               aes(x=as.numeric(empl_bin), y=label_data[[var]], label=Industry_Category, color = Industry_Category),
-                               hjust=1.1,
-                               size=3.5,
-                               direction="y",
-                               segment.color=NA,
-                               show.legend = F)+
-      theme(legend.position = "bottom") + 
-      labs(color="Sector")
-  }
-   
-  # export
-  ggsave(paste0(industry_output_dir, out_path, '.png'), graph, height = 5, width = 9)
+fwrite(collapsed_data[unique_firms>casd_n_obs], paste0(raw_output_dir, '4_industry_collapsed_data.csv'))
 }
 
+# generate plots -------------------------------------------------------------------------
+filter_lvl = 25; industry_cutoff = 5
+collapsed_data = import_file(de_dummy(raw_output_dir), '4_industry_collapsed_data.csv') %>% 
+  .[unique_firms > filter_lvl] %>%
+  mutate(empl_bin = factor(empl_bin, levels = unique(empl_bin)), empl_bin_num = as.numeric(empl_bin))
 
+top_industries = collapsed_data[,.(max_var = NA_max(size_adjusted_comp_data)), by = Industry_Category] %>%
+  arrange(-max_var) %>% pull(Industry_Category) %>% .[1:industry_cutoff]
+variations = fread("var, subtitle_
+                   use_data, % Firms Using Data
+                   size_adjusted_comp_data, Size Adjusted Data Compensation")
+graph = lapply(1:nrow(variations),function(i){
+  for (name in names(variations)) assign(name, variations[[name]][i])
+  graph_dta = rbindlist(list(
+    collapsed_data[Industry_Category %in% top_industries],
+    collapsed_data[!Industry_Category %in% top_industries] %>%
+      .[, setNames(list(NA_median(get(var))), var), by = .(empl_bin, empl_bin_num)] %>% 
+      .[,Industry_Category := 'All Other NACE\nCodes']), use.names =T , fill = T)
   
+  graph = graph_dta %>% ggplot(aes(x = empl_bin_num, y = .[[var]], color = Industry_Category)) +
+    geom_line() + theme_minimal() +
+    scale_color_discrete(breaks = c(top_industries, 'All Other NACE\nCodes')) + 
+    scale_x_continuous( breaks = seq_along(levels(graph_dta$empl_bin)), labels = levels(graph_dta$empl_bin)) +
+    labs(x = 'Employee Count', color = 'NACE-2 Code', y = element_blank(), subtitle = subtitle_) 
+  
+  if (var == 'use_data') graph = graph + 
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + 
+    theme(legend.position = 'none')
+  return(graph)
+})
+graph =  graph[[1]] + graph[[2]] + plot_annotation(title = 'Data Use Patterns Across Top Industries')
+ggsave(paste0(de_dummy(finished_output_dir), '4_industry_descriptives.png'),graph, width = 11.5, height = 5.2)
+
