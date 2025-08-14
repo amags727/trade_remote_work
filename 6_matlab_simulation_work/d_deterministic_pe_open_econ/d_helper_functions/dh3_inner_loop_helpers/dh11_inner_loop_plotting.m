@@ -56,7 +56,7 @@ graph_output{:, {'Cert_11','Cert_12','Cert_22'}} = 1- graph_output{:,{'Sigma_11'
 network_ss = network_t;
 v_ss = wgt' * v(idx,network_t);
 A_tilde_out = wgt'* A_tilde(idx, :).*networks(network_ss,:);
-market_2_entrance_t = find(graph_output.network == 2, 1 ,'first');
+market_2_entrance_t = find(graph_output.network == 2, 1 ,'first')/100;
 output_names = {'graph_output', 'network_ss','v_ss', 'A_tilde_out','market_2_entrance_t'};
 for i = 1:length(output_names); name = output_names{i}; output.(name) = eval(name); end
 end

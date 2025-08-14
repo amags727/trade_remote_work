@@ -6,53 +6,55 @@ Using defaults.
 Path 4.7.03 (Fri Feb 10 15:00:24 2012)
 Written by Todd Munson, Steven Dirkse, and Michael Ferris
 
-MCPC: Zer:    0 One: 10398 Two: 4870 Thr:    0
-Preprocessed size   : 732
+MCPC: Zer:    0 One: 10144 Two: 5118 Thr:    0
+Preprocessed size   : 738
 
 INITIAL POINT STATISTICS
-Maximum of X. . . . . . . . . .  8.0600e+00 var: (x[12212])
-Maximum of F. . . . . . . . . .  2.1459e+00 eqn: (f[  233])
-Maximum of Grad F . . . . . . .  4.6239e+01 eqn: (f[12391])
-                                            var: (x[12391])
+Maximum of X. . . . . . . . . .  7.7097e+00 var: (x[ 8275])
+Maximum of F. . . . . . . . . .  3.9962e-06 eqn: (f[13861])
+Maximum of Grad F . . . . . . .  3.7608e+01 eqn: (f[ 8276])
+                                            var: (x[ 8276])
 
 INITIAL JACOBIAN NORM STATISTICS
-Maximum Row Norm. . . . . . . .  9.2428e+01 eqn: (f[12391])
-Minimum Row Norm. . . . . . . .  3.3955e+00 eqn: (f[ 7013])
-Maximum Column Norm . . . . . .  8.8907e+01 var: (x[12371])
-Minimum Column Norm . . . . . .  1.0146e+01 var: (x[ 7832])
+Maximum Row Norm. . . . . . . .  7.5164e+01 eqn: (f[ 8276])
+Minimum Row Norm. . . . . . . .  3.0079e+00 eqn: (f[13795])
+Maximum Column Norm . . . . . .  7.1669e+01 var: (x[  676])
+Minimum Column Norm . . . . . .  9.0876e+00 var: (x[13394])
 
 Crash Log
 major  func  diff  size  residual    step       prox   (label)
-    0     0             8.9113e-08             0.0e+00 (f[12212])
+    0     0             8.3968e-05             0.0e+00 (f[13861])
+    1     1     0   738 3.2476e-13  1.0e+00    0.0e+00 (f[11015])
+pn_search terminated: no basis change.
 
 Major Iteration Log
 major minor  func  grad  residual    step  type prox    inorm  (label)
-    0     0     1     1 8.9113e-08           I 0.0e+00 4.8e-09 (f[12212])
+    0     0     2     2 3.2476e-13           I 0.0e+00 5.7e-14 (f[11015])
 
 FINAL STATISTICS
-Inf-Norm of Complementarity . .  4.7587e-09 eqn: (f[12212])
-Inf-Norm of Normal Map. . . . .  4.7587e-09 eqn: (f[12212])
-Inf-Norm of Minimum Map . . . .  4.7587e-09 eqn: (f[12212])
-Inf-Norm of Fischer Function. .  4.7587e-09 eqn: (f[12212])
-Inf-Norm of Grad Fischer Fcn. .  1.9978e-07 eqn: (f[12391])
-Two-Norm of Grad Fischer Fcn. .  1.1509e-06
+Inf-Norm of Complementarity . .  4.3806e-13 eqn: (f[ 8256])
+Inf-Norm of Normal Map. . . . .  5.6843e-14 eqn: (f[ 8236])
+Inf-Norm of Minimum Map . . . .  5.6843e-14 eqn: (f[ 8236])
+Inf-Norm of Fischer Function. .  5.6843e-14 eqn: (f[11015])
+Inf-Norm of Grad Fischer Fcn. .  2.9069e-12 eqn: (f[ 8636])
+Two-Norm of Grad Fischer Fcn. .  1.0945e-11
 
 FINAL POINT STATISTICS
-Maximum of X. . . . . . . . . .  8.0600e+00 var: (x[12212])
-Maximum of F. . . . . . . . . .  2.1459e+00 eqn: (f[  233])
-Maximum of Grad F . . . . . . .  4.6239e+01 eqn: (f[12391])
-                                            var: (x[12391])
+Maximum of X. . . . . . . . . .  7.7098e+00 var: (x[ 8275])
+Maximum of F. . . . . . . . . .  5.6843e-14 eqn: (f[ 8236])
+Maximum of Grad F . . . . . . .  3.7608e+01 eqn: (f[ 8276])
+                                            var: (x[ 8276])
 
  ** EXIT - solution found.
 
 Major Iterations. . . . 0
 Minor Iterations. . . . 0
 Restarts. . . . . . . . 0
-Crash Iterations. . . . 0
+Crash Iterations. . . . 1
 Gradient Steps. . . . . 0
-Function Evaluations. . 1
-Gradient Evaluations. . 1
-Basis Time. . . . . . . 0.000051
-Total Time. . . . . . . 0.027407
-Residual. . . . . . . . 8.911256e-08
-Postsolved residual: 8.9113e-08
+Function Evaluations. . 2
+Gradient Evaluations. . 2
+Basis Time. . . . . . . 0.000422
+Total Time. . . . . . . 0.036027
+Residual. . . . . . . . 3.247555e-13
+Postsolved residual: 2.9821e-12

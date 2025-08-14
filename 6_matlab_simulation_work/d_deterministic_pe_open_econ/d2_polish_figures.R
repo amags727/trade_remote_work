@@ -18,7 +18,7 @@ source('2) code/0_set_parameter_values.R')
 d_input_dir = '3) output/simulation_output/raw/'
 d_output_dir = '3) output/simulation_output/clean/'
 
-#gen baseline graphs -------------------------------------------------------------------------
+# 1_base_ss_progression -------------------------------------------------------------------------
 base_graph_inputs = import_file(d_input_dir, '1_base_ss_progression.csv') %>% 
   select(-c('pi_tot','Cert_12')) %>%  pivot_longer(cols = -t) %>% as.data.table() %>%
   .[,market := ifelse(grepl('1', name), '1','2')] %>% .[value != 0]
@@ -41,16 +41,16 @@ composite_graph = certainty_graph + x_graph + profit_graph + plot_annotation(tit
 ggsave(paste0(d_output_dir, '1_baseline_ss_progression.png'),composite_graph, width = 10.6, height = 5.22 )
 
 
-#phi_g comparison ------------------------------------------------------
+# 2_phi_g_x_data ------------------------------------------------------
 phi_g_graph = import_file(d_input_dir, '2_phi_g_x_data.csv')  %>%
   pivot_longer(cols = - phi_g, names_to = 'market') %>% mutate(market = gsub('l_', '', market)) %>% 
   ggplot(., aes(x = phi_g, y = value, color = market)) + geom_line() + theme_minimal()  + 
   labs(x = expression(phi[g]), y= 'data spend', title = 'Steady State Data Spend as a Function\nof Manufacuturing Productivity') 
 ggsave(paste0(d_output_dir, '2_phi_g_x_data.png'), phi_g_graph,width = 8.71, height = 6.19)
-# phi_d comparison  -----------------------------------------------------------------------
+# 3_phi_d_x_pe_growth  -----------------------------------------------------------------------
 phi_d_inputs = import_file(d_input_dir, '3_phi_d_x_pe_growth.csv') %>%
   pivot_longer(cols = -c(phi_d,t), names_to = 'Market') %>%
-  mutate(Market = gsub('x', '',Market), t = t/100) %>%
+  mutate(Market = gsub('x', '',Market)) %>%
   as.data.table() %>% .[value != 0]
 phi_d_vec = unique(phi_d_inputs$phi_d); max_t = max(phi_d_inputs$t); 
 
@@ -71,10 +71,10 @@ phi_d_pe_graph = phi_d_pe_graph[[1]] + phi_d_pe_graph[[2]] + phi_d_pe_graph[[3]]
 ggsave(paste0(d_output_dir, '3_phi_d_x_pe_growth.png'), phi_d_pe_graph, height = 5.17, width = 8.14)
 
 
-# Lambda Comparison -------------------------------------------------------
+# 4_lambda_x_pe_growth -------------------------------------------------------
 lambda_inputs = import_file(d_input_dir, '4_lambda_x_pe_growth.csv') %>%
   pivot_longer(cols = -c(lambda,t), names_to = 'Market') %>%
-  mutate(Market = gsub('x', '',Market), t = t/100) %>%
+  mutate(Market = gsub('x', '',Market)) %>%
   as.data.table() %>% .[value != 0]
 lambda_vec = unique(lambda_inputs$lambda); max_t = max(lambda_inputs$t); 
 
@@ -90,10 +90,44 @@ lambda_pe_graph = lapply(lambda_vec, function(c_lambda){
 })
 
 lambda_pe_graph = lambda_pe_graph[[1]] + lambda_pe_graph[[2]] + lambda_pe_graph[[3]] + 
-  plot_annotation(caption = "Time", title = 'Market Entry as a Function of Correlation between Markets') & 
+  plot_annotation(caption = "Time", title = 'Entry as a Function of Market Correlation') & 
   theme(plot.caption = element_text(hjust = 0.5, size = 11),
         plot.title = element_text(size = 12))
 ggsave(paste0(d_output_dir, '4_lambda_x_pe_growth.png'), lambda_pe_graph, height = 5.17, width = 8.14)
+
+
+
+
+
+# 5_symmetric_concentration_analysis ------------------------------------------------
+entry_graph_input = import_file(d_input_dir, '5b_concentration_anal_graph_results.csv') %>% .[,phi_d := as.factor(round(phi_d,2))] 
+entry_graph = lapply(1:2, function(i){
+graph = entry_graph_input %>% .[!get(paste0('x_',i))== 0] %>%  ggplot( aes(x = t, y= .[[paste0('x_',i)]], color = phi_d)) + geom_line() + 
+  scale_color_brewer(palette = "RdYlGn") + theme_minimal() +
+  labs(y = element_blank(), 
+       color = bquote(phi[d]),
+       x = "Time",
+       subtitle = paste0('Entrant Growth (mkt ', i,')')) + 
+  theme(axis.title.x = element_text(size = 10))
+
+if( i == 1) graph = graph + labs(y = 'Quality Adjusted Output') + theme(legend.position = 'none')
+return(graph)
+})
+
+num_firms_graph = import_file(d_input_dir, '5a_concentration_anal_summ_stats.csv')  %>% 
+  ggplot(aes(x = phi_d, y= num_firms)) + geom_line() + theme_minimal() + 
+  labs(subtitle = 'Number of Firms', y = element_blank(), x = bquote(phi[d])) + 
+  theme(plot.margin = margin(r = 30))
+
+ge_graph = num_firms_graph  + entry_graph[[1]] + entry_graph[[2]] +  plot_annotation(
+  title = "GE Characteristics as a Function of Aggregate Scraping Productivity") 
+
+ggsave(paste0(d_output_dir, '5_symmetric_concentration_analysis.png'), ge_graph, height = 6.19, width = 12.1)
+
+
+
+
+
 
 
 

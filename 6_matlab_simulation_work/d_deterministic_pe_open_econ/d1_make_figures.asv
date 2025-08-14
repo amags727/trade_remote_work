@@ -63,36 +63,38 @@ end
 
 
 %% 5) Plot impact on concentration at different phi_d levels in symmetric ss
-doing_anal_5 = false;
+doing_anal_5 = true;
 
 if doing_anal_5
     params = dh0_set_invariant_params(base_lambda); 
     grid_points = 10;
     phi_d_vec = linspace(0,params.phi_d*1.5,grid_points)';
-    results = array2table([phi_d_vec, zeros(grid_points,4)], 'VariableNames',...
-        {'phi_d', 'num_firms', 'x_1', 'x_2', 'time_to_ss'});
+    results = array2table([phi_d_vec, zeros(grid_points,5)], 'VariableNames',...
+        {'phi_d', 'num_firms', 'x_1', 'x_2', 'time_to_ss', 'market_2_entry_t'});
     graph_results = [];
     P0 = sym_P;
-    for i = 1:grid_points; disp(i)
+    for i = 1:grid_points
         l_params = params;
         l_params.phi_d =phi_d_vec(i);
         output = dh1_find_symmetric_ss(l_params, P0,sym_y); g_out = output.graph_output;
         
         % update initial P 
-        %P0 = output.P(1);
+        P0 = output.P(1);
         
         % log results 
         graph_results = [graph_results; [phi_d_vec(i)* ones(height(g_out), 1), g_out{:, {'t','x_1','x_2'}}]];
         results.num_firms(i) = output.num_firms;
         results{i, {'time_to_ss','x_1','x_2'}} = g_out{end, {'t','x_1','x_2'}};
     end
-    graph_results = array2table(graph_results,'VariableNames',{'phi_d', 't', 'x_1', 'x_2'});
     writetable(results, fullfile(out_dir, '5a_concentration_anal_summ_stats.csv'));
     writetable(graph_results, fullfile(out_dir, '5b_concentration_anal_graph_results.csv'));
 end
+disp('hi')
 
 
-%% Round 6 Home Country Analysis 
+
+
+%% A
 doing_asym_stuff = true;
 if doing_asym_stuff 
     test_lambda = .4;
@@ -120,5 +122,5 @@ if doing_asym_stuff
         end
     end
     results = results(1:i,:);
-    writetable(results_mat, fullfile(out_dir, '6_home_ctry.csv'));
+    writetable(results_mat, fullfile(out_dir, '5_home_ctry.csv'));
 end
