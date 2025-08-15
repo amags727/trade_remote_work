@@ -14,10 +14,8 @@ fc = fc_base *[1,foreign_cost_scaling];
 ec_multiplier =2;
 ec = ec_multiplier*fc; % entry costs to market 
 rev_ec = repmat(5,1, num_mkts); % exit costs from market 
-w_g = 1; % wage for production workers
 gamma = 4;     % CES parameter (from BEJK)
 gamma_tilde = gamma/(gamma-1);
-initial_demand_assumption = 20;
 tau = 1.005; % iceberg trade costs 
 
 %data parameters 

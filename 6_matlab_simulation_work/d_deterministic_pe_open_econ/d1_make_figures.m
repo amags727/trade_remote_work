@@ -7,13 +7,13 @@ out_dir = '../../../3) output/simulation_output/raw/';
 
 %% Solve an initial GE 
 sym_P = 0.9672; sym_y = 12; base_lambda = .5;
-doing_initial = false;
+doing_initial = true;
 if doing_initial
     params = dh0_set_invariant_params(base_lambda);
     output = dh1_find_symmetric_ss(params, sym_P,sym_y); 
     writetable(output.graph_output, fullfile(out_dir, '1_base_ss_progression.csv'));
     params.sym_num_firms = output.num_firms;
-    pe_params = params; pe_params.y = [y,y]; pe_params.P = output.P;
+    pe_params = params; pe_params.y = [sym_y,sym_y]; pe_params.P = output.P;
 end
 
 %% 2) plot the ss spend levels of different phi_g
@@ -120,5 +120,5 @@ if doing_asym_stuff
         end
     end
     results = results(1:i,:);
-    writetable(results_mat, fullfile(out_dir, '6_home_ctry.csv'));
+    writetable(results, fullfile(out_dir, '6_home_ctry.csv'));
 end
