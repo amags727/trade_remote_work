@@ -35,8 +35,9 @@ dummy_version = getwd() != "C:/Users/Public/Documents/Big data Project";
   linkedin_firm_yr_path = '1) data/7_revelio_data/c_final_outputs/7c3_linkedin_firm_yr_lvl.parquet'
   linkedin_firm_yr_region_path = '1) data/7_revelio_data/c_final_outputs/7c4_linkedin_firm_yr_region_lvl.parquet'
   
-  # 5 make firm yr data 
+  # 5/5a make firm yr data 
   firm_yr_path = '1) data/10_firm_yr_lvl_dta.parquet'
+  firm_euro_yr_path = '1) data/10a_firm_euro_yr_lvl_dta.parquet'
   firm_yr_summary_stats_path = '1) data/11_firm_yr_summary_stats_input.parquet'
   
   #6 make firm ctry yr data 
