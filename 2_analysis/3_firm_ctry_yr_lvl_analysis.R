@@ -51,11 +51,12 @@ ctry_immediate_failure_rate_yr_to_yr, country-year-level export failure rate, T
 ctry_immediate_failure_rate, country-level export failure rate, F") %>% mutate(time_varying = as.booltype(time_varying))
 
 
-firm_yr_ctry = import_file(firm_yr_ctry_path)
-firm_yr_ctry[, ever_export_customs:=any(currently_export_customs == T), by=.(ctry_num, firmid_num)]
+firm_yr_ctry = import_file(firm_yr_ctry_path) %>% 
+  .[, ever_export_customs:=any(currently_export_customs == T), by=.(ctry_num, firmid_num)] %>%
+  .[, ctry_num_year := .GRP, by = .(ctry_num, year)]
 
+gen_finished_tables = F;
 # 3a test different base specifications --------------------------------------------------------
-
 #define variations 
 {
 rev_variations = data.table(restriction = restrictions) %>% rowwise() %>%
@@ -79,10 +80,20 @@ detrended_var_variations = data.table(command = base_command %>%
   gsub('\\| firmid', '+ log_years_since_streak_start | firmid',. )) %>% # update controls 
   mutate(dep_var = 'detrended_var')
 
-variations = rbindlist(list(rev_variations, currently_export_variations, streak_death_variations, detrended_var_variations), use.names = T, fill = T)  %>% 
-  rbind(.,.) %>% mutate(intensive_margin = rep(c(F,T), each = nrow(.)/2)) %>% as.data.table() %>% 
-  .[intensive_margin == T, command := gsub('log_comp_data', 'use_data', command)] %>% .[, idx := .I] %>% 
-  select(idx,intensive_margin, dep_var, restriction, everything()) 
+variations = rbindlist(list(rev_variations, currently_export_variations, streak_death_variations, detrended_var_variations),
+  use.names = T, fill = T)  %>%
+  
+  ## add fixed effect variations 
+  mutate(fe = 'firm, ctry, year') %>%  # baseline 
+  bind_rows(mutate(.,command = gsub("\\| firmid_num", ' | NACE_BR', command), fe = 'industry, ctry, year'),
+            mutate(.,command = gsub("year \\+ ctry_num", 'ctry_num_year', command), fe = 'firm, ctry_year')) %>% 
+  
+ ## add extensive margin variations 
+ bind_rows(mutate(.[fe == 'firm, ctry, year'], command = gsub('log_comp_data', 'use_data', command))) %>%
+ .[,extensive_margin := grepl('use_data', command)] %>% 
+
+ ## add index and cleanup 
+.[, idx := .I] %>% select(idx, dep_var, restriction, fe, extensive_margin, everything())
 }
 
 # run variations 
@@ -91,9 +102,11 @@ if (!dummy_version){
   if (nrow(model_output$failed_output) >0) print('CHECK WHAT WENT WRONG WITH REGRESSIONS')
   write_rds(model_output$model_output,paste0(raw_output_dir, "3a_ctry_lvl_baseline_analysis.RDS"))
 }
+# set base specifications for next round 
+base_variations = variations[c(3, 7),] %>% .[,idx := .I]
 
 ## output table includes the rev / entry results where log_comp_data is our ind var 
-{
+if(gen_finished_tables){
 model_output = import_file(de_dummy(raw_output_dir), "3a_ctry_lvl_baseline_analysis.RDS") %>% 
   .[c(1,5,4,7,2,6,3)]
 label = '3a_ctry_lvl_rev_entry'
@@ -112,11 +125,10 @@ format_table(model_output, label = label,
              output_path =  paste0(de_dummy(finished_output_dir), label, '.tex'), make_tex = F)
 }
  
-# set base specifications for next round 
-base_variations = variations[c(3, 7),] %>% .[,idx := .I]
- 
+
 # 3b variation analysis  --------------------------------------------------
-interaction_variations = rbindlist(lapply(1:nrow(interaction_vars_and_terms),function(i){
+interaction_variations = base_variations %>% bind_rows(
+  rbindlist(lapply(1:nrow(interaction_vars_and_terms),function(i){
   t_variations = base_variations
   interaction = interaction_vars_and_terms$var[i]; interaction_name = interaction_vars_and_terms$term[i]
   ind_var_options = gpaste(c('log_comp_data', 'use_data'), c('_lag1', ''))
@@ -125,17 +137,17 @@ interaction_variations = rbindlist(lapply(1:nrow(interaction_vars_and_terms),fun
       command = gsub(paste0("(?<!_lag1)\\b", option, "\\b"),paste0(option, "*", interaction),command,perl = TRUE))
   }
   t_variations = t_variations %>% mutate(interaction = interaction_name)
-}))
-interaction_variations = rbindlist(list(base_variations, interaction_variations), use.names = T, fill =T) %>% 
-  mutate(idx = 1:nrow(.))
+}))) %>% mutate(idx = 1:nrow(.))
+
 if (!dummy_version){
   model_output = evaluate_variations(interaction_variations)
   if (nrow(model_output$failed_output) >0) print('CHECK WHAT WENT WRONG WITH REGRESSIONS')
   write_rds(model_output$model_output,paste0(raw_output_dir,"3b_ctry_lvl_interaction_analysis.RDS"))
 }
-
 model_output = import_file(de_dummy(raw_output_dir), "3b_ctry_lvl_interaction_analysis.RDS")
 
+## output select tables 
+if(gen_finished_tables){
 lapply(c('either_grav_region', 'either_grav_dist'), function(c_var){
 i = match(c_var, interaction_vars_and_terms$var)
 c_term = interaction_vars_and_terms$term[i]; 
@@ -166,7 +178,7 @@ format_table(
   note_width = .7,
   output_path =  paste0(de_dummy(finished_output_dir), c_label, '.tex'), make_tex = F)
 })
-
+}
 
 
 
