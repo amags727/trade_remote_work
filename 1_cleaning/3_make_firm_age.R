@@ -128,7 +128,15 @@ age_data = import_file(firm_lvl_birth_path, col_select = c('birth_year', 'firmid
 
 
 streak_info_BS = import_file(raw_bs_br_path, col_select = c('firmid_num', 'year', 'for_turnover')) %>%
+  
+  ## 2008 for_turnover is almost always missing from data. If the firm
+  ## has an export streak on either side of 2008 add a 2008 observation to keep it going 
   .[for_turnover!=0] %>% 
+  bind_rows(within_group_filter(., 'any(year ==2007) & any(year == 2009)', 'firmid_num') %>% 
+              .[,.(year = 2008, for_turnover = 1), by= firmid_num]) %>%
+  .[,temp := NULL]
+
+  ## carry on with variable construction 
   unbalanced_lag(. , 'firmid_num', 'year', 'for_turnover', 1) %>% 
   .[,export_streak_id_BS := cumsum(is.na(for_turnover_lag1))] %>%
   .[, streak_start_year := min(year), by = export_streak_id_BS] %>% 
