@@ -17,6 +17,8 @@ rm(list = ls()); gc();
 source('2) code/0_set_parameter_values.R')
 
 
+
+
 # make extended version of data for variance purposes ------------------------------------------
 making_extended = T; start_year = 2000;
 extended_firm_yr_path =  '1) data/14_extended_firm_yr_variance_dta.parquet'
@@ -24,18 +26,19 @@ if (dummy_version) extended_firm_yr_path = gsub('1) data', '1a) dummy data', ext
 if (making_extended  == T){
 
 main_sample_firms = import_file(firm_yr_path, col_select = 'firmid_num') %>% unique() %>% pull(firmid_num)
-bs_data = import_file(raw_bs_br_path,col_select = c('firmid_num', 'year','for_turnover')) %>% 
-  .[, log_total_export_rev_BS := asinh(for_turnover)] %>% .[year >= start_year] 
+bs_data = import_file(raw_bs_br_path,col_select = c('firmid_num', 'year','for_turnover', 'turnover')) %>% 
+  .[, log_total_export_rev_BS := asinh(for_turnover)] %>% .[year >= start_year]
 
 export_data = import_file(raw_customs_firm_lvl_path, col_select = c('firmid_num', 'year', 'exim', 'value')) %>%
   .[exim == 2 & year >= start_year] %>% .[,exim := NULL] %>%
-  .[,.(log_total_export_rev_customs = asinh(sum(value, na.rm = T))), by = .(firmid_num, year)]
+  .[,.(log_total_export_rev_customs = asinh(sum(value, na.rm = T))), by = .(firmid_num, year)] %>%
+  .[year!=2021]
 
 extended_data = merge(bs_data, export_data, all = T, by = c('firmid_num', 'year')) %>% 
   .[,log_total_export_rev_customs := replace_na(log_total_export_rev_customs, 0)]  %>% 
   
   # add age data 
-  merge(import_file(firm_lvl_birth_path, col_select = c('firmid_num', 'birth_year')), by = 'firmid_num') %>%
+  merge(import_file(firm_lvl_birth_path, col_select = c('firmid_num', 'birth_year')), all.x=T, by = 'firmid_num') %>%
   .[,age := year - birth_year] %>% 
   merge(import_file(firm_lvl_export_birth_path), all.x =T, by = c('firmid_num', 'year')) %>% 
   .[, `:=`(log_age = asinh(age), log_export_streak_age_BS = asinh(export_streak_age_BS),
@@ -85,7 +88,8 @@ suppressWarnings(dir.create(var_output_dir, recursive = T))
 # 5a base graph  -----------------------------------------------------------------------
 dep_vars = gpaste('log_total_export_rev_', c('BS', 'customs'), c('', '_cond'), '_detrended_var')
 
-graph_inputs = base_data[,c(
+# graph_inputs = base_data[,c(
+graph_inputs = extended_data[,c(
   setNames(lapply(.SD[, ..dep_vars], NA_mean),dep_vars),
   setNames(lapply(.SD[, ..dep_vars], function(x) NA_sum(x*turnover) /NA_sum(turnover)) ,
                   paste0('wgted_',dep_vars))), by = year] %>% 
@@ -94,20 +98,26 @@ graph_inputs = base_data[,c(
                               var_name = paste0(ifelse(grepl("BS", var), 'BS', 'Customs'),
                                                 ifelse(grepl('cond',var), " cond", '')))  
 
-graph_output = lapply(c(F,T), function(wgt_yn){
-  graph = graph_inputs[wgted == wgt_yn] %>% 
-    ggplot(aes(x = year, y =value, color = var_name)) + geom_line() + theme_minimal() + 
-    labs(y = element_blank(), x = element_blank(), subtitle = 'Weighted by Firm Size', color = 'Variance Metric') +
-    scale_x_continuous(breaks = seq(min(year_range), max(year_range), 2)) 
-  if (wgt_yn ==F) graph = graph + labs(y =  'log export varaince', subtitle = 'Unweighted') +
-      theme(legend.position = 'none') 
-  return(graph)
-})
-graph_output = graph_output[[1]] + graph_output[[2]] + plot_annotation(title = 'Detrended Log Export Variance over Time')
-ggsave(paste0(var_output_dir, '/5a_base_graph.png'), graph_output, width = 10.3, height = 5.2)
+  graph_output = lapply(c(F,T), function(wgt_yn){
+    graph = graph_inputs[wgted == wgt_yn] %>% 
+      ggplot(aes(x = year, y =value, color = var_name)) + geom_line() + theme_minimal() + 
+      labs(y = element_blank(), x = element_blank(), subtitle = 'Weighted by Firm Size', color = 'Variance Metric') +
+      scale_x_continuous(breaks = seq(start_year, max(graph_inputs$year), 2)) 
+    if (wgt_yn ==F) graph = graph + labs(y =  'log export varaince', subtitle = 'Unweighted') +
+        theme(legend.position = 'none') 
+    return(graph)
+  })
+  graph_output = graph_output[[1]] + graph_output[[2]] + plot_annotation(title = 'Detrended Log Export Variance over Time')
+  ggsave(paste0(var_output_dir, '/5a_base_graph.png'), graph_output, width = 10.3, height = 5.2)
 
 
 # 5b analysis of export streak age over sample period  ----------------------------------------------------------------------
+
+# setup output dir 
+streak_output_dir = paste0(finished_output_dir,'6_export_streak_over_time')
+suppressWarnings(dir.create(var_output_dir, recursive = T))
+  
+  
 probs <- c(0.05, 0.25, 0.50, 0.75, 0.95); p_labels <- sprintf("%02d", probs * 100)
 export_streak_info <- melt(extended_data,id.vars = "year",
   measure.vars = c("export_streak_age_BS", "export_streak_age_customs"),
@@ -115,10 +125,18 @@ export_streak_info <- melt(extended_data,id.vars = "year",
   value.name = "value")
 
 export_streak_info = rbindlist(lapply(probs, function(prob){
-  export_streak_info[, .(value = quantile(value, .05, na.rm = T)), by =.(variable, year)] %>% .[,percentile_value := prob]
+  export_streak_info[, .(value = quantile(value, prob, na.rm = T)), by =.(variable, year)] %>% .[,percentile_value := prob]
 }))
 
+graph_output= lapply(unique(export_streak_info$variable), function(var){
+  ggplot(export_streak_info[variable==var], aes(x = year, y =value, color = as.factor(percentile_value))) + geom_line() + theme_minimal() + 
+    labs(y = "Streak Age", x = element_blank(), subtitle = if(grepl("BS", var)) "BS" else "Customs", color = 'Percentile') +
+    scale_x_continuous(breaks = seq(start_year, max(graph_inputs$year), 2)) 
+  
+})
 
+graph_output = graph_output[[1]]+   theme(legend.position = 'none')  + graph_output[[2]] + plot_annotation(title = 'Export Streak over Time')
+ggsave(paste0(streak_output_dir, '/6_base_graph.png'), graph_output, width = 10.3, height = 5.2)
 
 
 
