@@ -110,6 +110,9 @@ write_parquet(role_dta,'1) data/11_parameter_calibration/raw/firm_role_dta.parqu
 
 # merge and clean -------------------------------------------------------
 vars_to_deflate = c('net_sales_usd', 'val_1', 'val_2')
+vars_to_log = c('sales_actual', 'sales_forecast', 'comp_data', 'comp_total','abs_forecast_error', 'age',
+                'forecast_range')
+
 # generate exchange rate data 
 getSymbols("DEXUSEU", src="FRED"); 
 euro_usd_dta = as.data.table(DEXUSEU) %>%  rename(date = index, euro_usd = DEXUSEU) %>% 
@@ -143,16 +146,34 @@ combined_dta = import_file('1) data/11_parameter_calibration/raw/firm_financial_
   rename(sales_actual = net_sales_usd ) %>% 
   .[,sales_forecast := ifelse(is.na(val_2), val_1, .5*(val_1+val_2))] %>% 
   .[!is.na(val_2), `:=`(sales_forecast_lb = val_1, sales_forecast_ub = val_2)] %>% 
-  .[,sales_forecast_from_range := !is.na(sales_forecast + val_2)] %>% 
+  .[,forecast_from_range := !is.na(sales_forecast + val_2)] %>% 
+  .[sales_forecast_ub > sales_forecast_lb,forecast_range := sales_forecast_ub - sales_forecast_lb] %>%
     
   ## Generate forecast errors (for observations where the merge doesn't look reallllly strange)
   .[, estimate_ratio := sales_actual / sales_forecast] %>% 
   .[ estimate_ratio > .1 & estimate_ratio < 10, forecast_error := sales_actual - sales_forecast]  %>% 
+  .[, abs_forecast_error := abs(forecast_error)] %>% 
 
   ## merge in role data and clean compensation to match other units 
   merge(role_data,all.y = T,  by = c('isin', 'fiscal_year')) %>% 
-  .[,`:=`(comp_total = comp_total*1e-6, comp_data = comp_data*1e-6)]
+  .[,`:=`(comp_total = comp_total*1e-6, comp_data = comp_data*1e-6)] %>%
+  .[,use_data := comp_data > 0] %>% 
+    
+  ## log variables of interest 
+  .[, paste0('log_',vars_to_log) := lapply(.SD, asinh), .SDcols =vars_to_log] %>%
+  .[,  log_sales_forecast_sq :=  log_sales_forecast^2] %>% 
   
+  .[,full_info := !is.na(forecast_error) & !is.na(comp_data)] %>% 
+  .[,full_info_for_start := full_info & !is.na(forecast_range)]
+write_parquet(combined_dta,'1) data/11_parameter_calibration/clean/combined_firm_dta.parquet') 
+
+
+
+#feols(combined_dta[fiscal_year %in% year_range], log_abs_forecast_error ~ log_comp_data +log_comp_total+ log_sales_forecast + log_sales_forecast_sq| fiscal_year + isin)
+#feols(combined_dta[fiscal_year %in% year_range], log_abs_forecast_error ~ log_comp_data +log_comp_total+ log_sales_forecast + log_sales_forecast_sq| fiscal_year + industry_group)
+
+
+
 
 
 
