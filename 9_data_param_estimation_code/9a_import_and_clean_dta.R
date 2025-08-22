@@ -163,8 +163,7 @@ combined_dta = import_file('1) data/11_parameter_calibration/raw/firm_financial_
   .[, paste0('log_',vars_to_log) := lapply(.SD, asinh), .SDcols =vars_to_log] %>%
   .[,  log_sales_forecast_sq :=  log_sales_forecast^2] %>% 
   
-  .[,full_info := !is.na(forecast_error) & !is.na(comp_data)] %>% 
-  .[,full_info_for_start := full_info & !is.na(forecast_range)]
+  .[,full_info_for_start :=  comp_data!=0 & !is.na(sales_forecast)]
 write_parquet(combined_dta,'1) data/11_parameter_calibration/clean/combined_firm_dta.parquet') 
 
 
