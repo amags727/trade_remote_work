@@ -521,9 +521,27 @@ get_largest_polygon = function(geom){
   parts = st_cast(geom, 'POLYGON')
   areas = st_area(parts)
   parts[which.max(areas)]}
-
-
-
+softplus <- function(x) log1p(exp(-abs(x))) + pmax(x, 0)
+logistic <- function(x) 1/(1 + exp(-x))
+windsorize = function(dta,int_var, relative_var = NULL, probs){
+  if (is.null(relative_var)){
+    q = quantile(dta[[int_var]], probs = probs, na.rm = T, type = 7)
+    new_var = pmin(pmax(dta[[int_var]], q[1L]), q[2L])
+  }else{
+    base = dta[[relative_var]]
+    scale_factor = dta[[int_var]] / base
+    q = quantile(scale_factor, probs = probs, na.rm = T, type = 7)
+    scale_factor =  pmin(pmax(scale_factor, q[1L]), q[2L])
+    new_var = base*scale_factor
+    new_var[base == 0] = NA
+  }
+  return(new_var)
+}
+softplus_inv <- function(y) {
+  # inverse of log1p(exp(x))
+  if (any(y <= 0)) stop("softplus is only defined for y > 0")
+  log(exp(y) - 1)
+}
 
 gen_dummy_dataset = function(base,subset_vars =NA, discrete_vars = NA, id_vars, rounding_vars = NA, dont_repeat_ids_within =NA){
   

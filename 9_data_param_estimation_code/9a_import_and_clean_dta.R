@@ -14,6 +14,7 @@ if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list 
 
 ## import helper functions 
 source('2) code/0_set_parameter_values.R')
+
 # import raw data ---------------------------------------------------------
 importing_dta = F
 if (importing_dta){
@@ -51,6 +52,7 @@ SELECT c.item6038 AS ibes_ticker,c.item6008 AS isin, f.year_ AS fiscal_year, c.i
   WHERE f.item6038 IS NOT NULL AND f.freq = 'A'") %>% as.data.table() %>% 
   .[is.na(fiscal_year_enddate), fiscal_year_enddate := as.Date(paste0(fiscal_year, '-12-31'))] %>% 
   .[, fiscal_year_startdate := fiscal_year_enddate %m-% years(1) + days(1)] %>%  
+  .[,forecast_window := as.numeric(difftime(fiscal_year_enddate, t1, units = "days")) / 365.25] %>% 
   .[, birth_year := ifelse(is.na(birth_date), year(birth_date), year(incorporation_date))] %>% 
   .[, age := fiscal_year - birth_year] %>% 
   .[!is.na(isin)] %>% 
@@ -129,7 +131,10 @@ deflator_dta[, gdp_def := base_deflator_val/ gdp_def]
 
 role_data = import_file('1) data/11_parameter_calibration/raw/firm_role_dta.parquet') 
 combined_dta = import_file('1) data/11_parameter_calibration/raw/firm_financial_dta.parquet') %>% 
-  .[nation %in% c("UNITED STATES", 'FRANCE') & forecast_curr %in% c('USD', 'EUR')] %>% 
+  
+  ## filter to keep only US / French Firms without messed up guidance 
+  .[nation %in% c("UNITED STATES", 'FRANCE') & forecast_curr %in% c('USD', 'EUR')] %>%
+  .[forecast_window > 0] %>% 
   
   merge(euro_usd_dta, all.x = T, by.x = 'fiscal_year_enddate', by.y = 'date') %>% 
   merge(deflator_dta, all.x = T, by.x = 'fiscal_year_enddate', by.y = 'date') %>% 
@@ -143,28 +148,35 @@ combined_dta = import_file('1) data/11_parameter_calibration/raw/firm_financial_
   .[, (vars_to_deflate) := lapply(.SD, function(x) x*gdp_def), .SDcols =vars_to_deflate] %>% 
 
   ## generate sales estimates from guidance data 
-  rename(sales_actual = net_sales_usd ) %>% 
-  .[,sales_forecast := ifelse(is.na(val_2), val_1, .5*(val_1+val_2))] %>% 
-  .[!is.na(val_2), `:=`(sales_forecast_lb = val_1, sales_forecast_ub = val_2)] %>% 
-  .[,forecast_from_range := !is.na(sales_forecast + val_2)] %>% 
-  .[sales_forecast_ub > sales_forecast_lb,forecast_range := sales_forecast_ub - sales_forecast_lb] %>%
-    
-  ## Generate forecast errors (for observations where the merge doesn't look reallllly strange)
-  .[, estimate_ratio := sales_actual / sales_forecast] %>% 
-  .[ estimate_ratio > .1 & estimate_ratio < 10, forecast_error := sales_actual - sales_forecast]  %>% 
-  .[, abs_forecast_error := abs(forecast_error)] %>% 
+  rename(xt = net_sales_usd ) %>% 
+  .[, E_xt_tminus1 := ifelse(is.na(val_2), val_1, .5*(val_1+val_2))] %>% 
+  .[!is.na(val_2), `:=`(E_xt_tminus1_lb = val_1, E_xt_tminus1_ub = val_2)] %>%
+  .[,E_xt_tminus1_range := E_xt_tminus1_ub - E_xt_tminus1_lb] %>%
+  .[ E_xt_tminus1_range <= 0,  c("E_xt_tminus1_ub", "E_xt_tminus1_lb", "E_xt_tminus1", "E_xt_tminus1_range") := NA] %>%
+  .[, FE_t_tminus1 :=  xt - E_xt_tminus1] %>%
+  .[, pct_FE_t_tminus1 := FE_t_tminus1 / E_xt_tminus1] 
 
+  q90 <- quantile(combined_dta$pct_FE_t_tminus1, probs = c(0.05, 0.95), na.rm = TRUE)
+  q80 <- quantile(combined_dta$pct_FE_t_tminus1, probs = c(0.10, 0.90), na.rm = TRUE)
+  combined_dta = combined_dta %>%
+    .[,  pct_FE_t_tminus1_inner90 := as.integer(pct_FE_t_tminus1 >= q90[1] & pct_FE_t_tminus1 <= q90[2])] %>%
+    .[,  pct_FE_t_tminus1_inner80 := as.integer(pct_FE_t_tminus1 >= q80[1] & pct_FE_t_tminus1 <= q80[2])] %>%
+    unbalanced_lag(., 'isin', 'fiscal_year', con_fil(.,'t_tminus1'), -1) %>% 
+    rename_with(.cols = con_fil(., 'lead1'), ~gsub('_lead1', '',.) %>% gsub('t_tminus1', 'tplus1_t',.)) %>%
+    
+ 
   ## merge in role data and clean compensation to match other units 
   merge(role_data,all.y = T,  by = c('isin', 'fiscal_year')) %>% 
   .[,`:=`(comp_total = comp_total*1e-6, comp_data = comp_data*1e-6)] %>%
   .[,use_data := comp_data > 0] %>% 
-    
-  ## log variables of interest 
-  .[, paste0('log_',vars_to_log) := lapply(.SD, asinh), .SDcols =vars_to_log] %>%
-  .[,  log_sales_forecast_sq :=  log_sales_forecast^2] %>% 
-  
-  .[,full_info_for_start :=  comp_data!=0 & !is.na(sales_forecast)]
+  unbalanced_lag(., 'isin', 'fiscal_year', c('comp_data', 'comp_total', 'use_data'), 1) %>%
+  rename_with(.cols = con_fil(., 'lag1'), ~gsub('_lag1', '_tminus1',.)) 
 write_parquet(combined_dta,'1) data/11_parameter_calibration/clean/combined_firm_dta.parquet') 
+
+
+
+
+
 
 
 
