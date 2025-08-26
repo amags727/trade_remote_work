@@ -30,7 +30,6 @@ int_base_command = gsub('log_comp_data \\+ log_comp_data_lag1',
                         'log_comp_data*nace_share_export_BS + log_comp_data_lag1*nace_share_export_BS',
                         base_command)
 
-
 # 2a generate variations ----------------------------------------------------------------------
 baseline_rev = data.table(dep_var = 'rev', command = c(
   ## add BS versions 
@@ -91,10 +90,66 @@ variations = rbindlist(list(baseline_rev, baseline_currently_export, baseline_de
          extensive_margin = grepl('use_data', command), 
          idx = 1:nrow(.)) %>% 
     select(idx,dep_var, version, restriction, fe, share_interaction, euro,extensive_margin, command)
-  
-model_output = evaluate_variations(variations)
-if(nrow(model_output$failed_output)!= 0) print('CHECK WHAT WENT WRONG')
-write_rds(model_output, paste0(raw_output_dir, '2_variations.rds'))
+if (!dummy_version){  
+  model_output = evaluate_variations(variations)
+  if(nrow(model_output$failed_output)!= 0) print('CHECK WHAT WENT WRONG')
+  write_rds(model_output, paste0(raw_output_dir, '2_firm_yr_variations.rds'))
+}
+# Output Revenue Results ---------------------------------------------------
+analysis_output = import_file(de_dummy(raw_output_dir), '2_firm_yr_variations.rds')
+model_output =  analysis_output$model_output; variation_output = analysis_output$variation_output 
+
+## Generate Revenue Tables   
+coef_names = c(gpaste(c('', 'lagged '),'log payroll ', c('data', 'total'), order = 3:1),
+               gpaste('log dom. revenue', c('', ' sq')), 'empl. prestige', 'share empl. college grad', 'log firm age', "log capital intensity",
+               rep(c(gpaste(c("", '\\hspace{5 pt}x ', '\\hspace{5 pt}lx '), 'share industry exporting'), 'log export\nstreak year'),2))
+rev_labels = c('2a.1_rev_firm_FE','2a.2_rev_ind_FE', '2a.3_rev_firm_FE_ext', '2a.4_rev_ind_FE_ext') 
+rev_reg_list = list(1:6, 13:18, 33:38, 45:50)
+notes_list = "Robust Standard Errors clustered at the firm level. All Regressions include firm and year FE." %>%
+  c(., gsub('firm and', 'industry and', .)) %>% rep(.,2)
+final_commands_list = "table = gsub('lx', 'x',table)" %>% c(., paste0(., " %>% gsub('log payroll', 'use', .)")) %>% rep(.,each = 2)
+for (i in 1:4){
+format_table(
+  model_output[rev_reg_list[[i]]] , label = rev_labels[i],
+  coef_names = coef_names,
+  coef_order = c(1, 12,2,13,11, 3:10,14),
+  headers = "&\\multicolumn{3}{c}{Total Export Rev (Balance Sheet)}& &\\multicolumn{3}{c}{Total Export Rev (Customs)}\\\\",
+  divisions_before = 4,
+  rescale_factor = 1,
+  custom_rows = list(""),
+  custom_row_placement = 18,
+  final_commands =final_commands_list[i],
+  notes = notes_list[i],
+  note_width = 1,
+  output_path =  paste0(de_dummy(finished_output_dir),  rev_labels[i], '.tex'), make_tex = F )
+}
+
+### Generate supplementary regression tables 
+supp_coef_names = coef_names[-c(11:13, 15:17)]
+supp_reg_list = list(
+  variations[dep_var != 'rev' & fe == 'firm' & extensive_margin == F & euro == F][['idx']],
+  variations[dep_var != 'rev' & fe == 'industry' & extensive_margin == F & euro == F][['idx']],
+  variations[dep_var != 'rev' & fe == 'firm' & extensive_margin == T & euro == F][['idx']],
+  variations[dep_var != 'rev' & fe == 'industry' & extensive_margin == T & euro == F][['idx']])
+supp_labels = gsub('2a', '2b', rev_labels) %>% gsub('rev', 'supp', . )
+supp_final_commands_list = rep(c('', "table = gsub('log payroll', 'use', table)"), each = 2)
+
+for (i in 1:4){
+format_table(model_output[supp_reg_list[[i]]], label = supp_labels[i],
+             coef_names = supp_coef_names,
+             headers = make_headers(2,  c('P(currently exporting)', 'P(end export streak)', 'Detrended Export Variance')),
+             column_names = rep(c('BS', 'customs'),3),
+             divisions_before = c(3,5),
+             rescale_factor = 1,
+             custom_rows = list(""),
+             custom_row_placement = 12,
+             notes = notes_list[i],
+             note_width = 1.1,
+             final_commands =  supp_final_commands_list[i],
+             output_path =  paste0(de_dummy(finished_output_dir), supp_labels[i], '.tex'), make_tex = F )
+}
+
+
 
 
 

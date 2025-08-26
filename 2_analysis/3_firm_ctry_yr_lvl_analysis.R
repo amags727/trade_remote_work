@@ -34,7 +34,7 @@ nace_share_export_customs_any_ctry, share industry exporting, T
 grav_region, gravity region, F
 grav_border, gravity border, F
 grav_language, gravity language, F
-log_grav_dist, gravity distance, F
+log_grav_dist, log gravity distance, F
 either_grav_region, extended grav. region, T
 either_grav_border, extended grav. border, T
 either_grav_language, either gravity language, T
@@ -55,7 +55,6 @@ firm_yr_ctry = import_file(firm_yr_ctry_path) %>%
   .[, ever_export_customs:=any(currently_export_customs == T), by=.(ctry_num, firmid_num)] %>%
   .[, ctry_num_year := .GRP, by = .(ctry_num, year)]
 
-gen_finished_tables = F;
 # 3a test different base specifications --------------------------------------------------------
 #define variations 
 {
@@ -100,33 +99,35 @@ variations = rbindlist(list(rev_variations, currently_export_variations, streak_
 if (!dummy_version){
   model_output = evaluate_variations(variations)
   if (nrow(model_output$failed_output) >0) print('CHECK WHAT WENT WRONG WITH REGRESSIONS')
-  write_rds(model_output$model_output,paste0(raw_output_dir, "3a_ctry_lvl_baseline_analysis.RDS"))
+  write_rds(model_output,paste0(raw_output_dir, "3a_ctry_lvl_baseline_analysis.RDS"))
 }
-# set base specifications for next round 
-base_variations = variations[c(3, 7),] %>% .[,idx := .I]
 
-## output table includes the rev / entry results where log_comp_data is our ind var 
-if(gen_finished_tables){
-model_output = import_file(de_dummy(raw_output_dir), "3a_ctry_lvl_baseline_analysis.RDS") %>% 
-  .[c(1,5,4,7,2,6,3)]
-label = '3a_ctry_lvl_rev_entry'
+## output table includes the rev / entry results under 
+model_output = import_file(de_dummy(raw_output_dir), "3a_ctry_lvl_baseline_analysis.RDS")
+reg_lists = c(1,5,4,7,2,6,3) %>% list(., . +9, . + 18, .+27)
+label_list = gpaste('3a.', 1:4,"_rev_entry (", c('base','industry_fe', 'ctry_yr_fe', 'ext_margin'), ")", no_expand =T )
+notes_list = "Robust Standard Errors clustered at the firm level. All Regressions include firm, year, and country FE." %>%c(
+  ., gsub('firm,', 'industry,',.), gsub(', year, and country', ' and country-year',.), .) 
+final_commands_list = rep(c('', "table = gsub('log payroll', 'use', table)"), each = 2)
 
-format_table(model_output, label = label,
-             coef_names = base_coef_names,
+for (i in 1:4){
+format_table(model_output[reg_lists[[i]]], label = label_list[i],
+             coef_names = if (i != 3){base_coef_names}else{con_fil(base_coef_names, 'popularity', inc =F)},
              headers = paste0('Sample',sub("2(?!.*2)", "1", perl= T, make_headers(2,  rep(c('Ever Exporter', 'Currently Exporter'), each = 2))),
                               'Restriction',sub("2(?!.*2)", "1", perl= T, make_headers(2,  rep(c('(overall)', '(to country)'),  2)))),
-             column_names = c(rep(c('Log Rev', 'In Country'), 3), 'Log Rev'),
+             column_names = c(rep(c('Log Rev', 'P(In Country)'), 3), 'Log Rev'),
              divisions_before = c(3,5,7),
              rescale_factor = 1,
              custom_rows = list(""),
              custom_row_placement = 12,
-             notes = "Robust Standard Errors clustered at the firm level. All Regressions include firm, year, and country FE.",
+             notes = notes_list[i],
+             final_commands = final_commands_list[i],
              note_width = 1,
-             output_path =  paste0(de_dummy(finished_output_dir), label, '.tex'), make_tex = F)
+             output_path =  paste0(de_dummy(finished_output_dir), label_list[i], '.tex'), make_tex = F)
 }
- 
-
+  
 # 3b variation analysis  --------------------------------------------------
+base_variations = variations[c(3, 7),] %>% .[,idx := .I]
 interaction_variations = base_variations %>% bind_rows(
   rbindlist(lapply(1:nrow(interaction_vars_and_terms),function(i){
   t_variations = base_variations
@@ -147,8 +148,7 @@ if (!dummy_version){
 model_output = import_file(de_dummy(raw_output_dir), "3b_ctry_lvl_interaction_analysis.RDS")
 
 ## output select tables 
-if(gen_finished_tables){
-lapply(c('either_grav_region', 'either_grav_dist'), function(c_var){
+lapply(c('grav_region', 'log_grav_dist'), function(c_var){
 i = match(c_var, interaction_vars_and_terms$var)
 c_term = interaction_vars_and_terms$term[i]; 
 c_time_varying = interaction_vars_and_terms$time_varying[i]
@@ -178,7 +178,7 @@ format_table(
   note_width = .7,
   output_path =  paste0(de_dummy(finished_output_dir), c_label, '.tex'), make_tex = F)
 })
-}
+
 
 
 
