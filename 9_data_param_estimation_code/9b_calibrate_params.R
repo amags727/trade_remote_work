@@ -15,280 +15,145 @@ if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list 
 ## import helper functions 
 source('2) code/0_set_parameter_values.R')
 
+# helper functions --------------------------------------------------------
+map_params = function(eta, theta_max = .999, alpha_max = .999){
+ names(eta) = eta_names
+   list(
+    mu_a    = softplus(eta[["mu_a_raw"]]),
+    phi_d_tilde   = softplus(eta[["phi_d_tilde_raw"]]),
+    phi_d = softplus(eta[["phi_d_tilde_raw"]])/(scale_L*scale_E),
+    alpha_1 = alpha_max *logistic(eta[["alpha_1_raw"]]),
+    alpha_2 = alpha_max*logistic(eta[["alpha_2_raw"]]),
+    sigma_a = softplus(eta[["sigma_a_raw"]]),
+    Q_d     = softplus(eta[["Q_d_raw"]]),
+    theta_d = theta_max * logistic(eta[["theta_d_raw"]]),
+    #kappa   = eta[["kappa_raw"]],
+    f0      = logistic(eta[["f0_raw"]])   
+  )
+}
+
 # import and clean dta -----------------------------------------------------------------------
 min_streak_length = 8
-earliest_streak_start = 2000
-interest_year_range = 2010:2019
-
-combined_dta = suppressWarnings(import_file('1) data/11_parameter_calibration/clean/combined_firm_dta.parquet') %>% 
-  
-  # remove firms prior to our earliest start date 
-  .[fiscal_year %in% interest_year_range & comp_data !=0] %>% 
-  
-  # define our streaks as continuous chains of comp_data after a range forecast
+interest_year_range = year_range
+vars_to_windsorize = c('L_t', 'E_xt_tminus1') #, 'FE_tplus1_t'
+min_age_for_likelihood = 3;
+dta = import_file('1) data/11_parameter_calibration/clean/combined_firm_dta.parquet') %>% 
+  # remove observations with no data, prior to our earliest start date, with extreme forecast errors  
+  .[fiscal_year %in% interest_year_range & comp_data !=0 & !is.na(E_xt_tminus1)] %>%
+  arrange(isin, fiscal_year) %>%
   unbalanced_lag(. , 'isin', 'fiscal_year', 'comp_data', 1) %>%
-  .[,streak_id := cumsum(is.na(comp_data_lag1))] %>% 
-  .[,streak_start := min(ifelse(full_info_for_start, fiscal_year, Inf)), by = streak_id] %>% 
+  .[,streak_id := cumsum(is.na(comp_data_lag1))] %>% .[,comp_data_lag1 := NULL] %>% 
+  .[,streak_start := min(fiscal_year), by = streak_id] %>% 
   .[, is_streak_start := fiscal_year == streak_start] %>% 
   
   # remove observations before first range observation 
   .[fiscal_year >= streak_start] %>% 
-  .[, streak_length :=.N, by = 'streak_id'] %>% 
+  .[,streak_length :=.N, by = 'streak_id'] %>% 
   
   # remove observations that are not from long enough streaks 
   .[streak_length >= min_streak_length] %>% 
   
   # define key values 
-  .[, x_bar := NA_mean(sales_actual), by = 'streak_id'] %>% 
-  .[, t := fiscal_year] %>% 
-  .[, L_t := comp_data] %>% 
-  .[, FE_t1_t := forecast_error] %>% 
-  .[  is_streak_start== F, forecast_range := NA] %>%
-  .[is_streak_start== T, E_x_t1_t := sales_forecast] %>%
-  .[,firm_num := .GRP, by = isin] %>% 
-  .[, .(t, streak_id,is_streak_start, x_bar, L_t, FE_t1_t, E_x_t1_t)] %>% 
-  arrange(streak_id, t) %>% 
+  .[, x_bar := NA_median(xt), by = 'streak_id'] %>% 
+  .[, L_t := comp_data]  %>% 
   .[, age := seq_len(.N) - 1L, by = streak_id] %>% 
   .[, idx := .I] %>% 
-  .[, prev_row_idx := shift(idx, 1), by = streak_id])
+  .[, prev_row_idx := shift(idx, 1), by = streak_id] %>%
+
+  # windsorize variables relative to x_bar 
+  .[, (vars_to_windsorize) := lapply(vars_to_windsorize, function(x) windsorize(., x, 'x_bar', c(.05,.95)))]
 
 
-
-# perform calibration -----------------------------------------------------
-# Define helper functions 
-softplus <- function(x) log1p(exp(-abs(x))) + pmax(x, 0)
-pospow <- function(x, a) { x <- pmax(x, EPS); if (abs(a) < EPS) rep(1.0, length(x)) else x^a }
-log_likelihood_wrapper= function(params, likelihood_type = c("gaussian", "exact")){
-  likelihood_type <- match.arg(likelihood_type)
-
-  # unpack params and check feasibility 
-  for (name in names(params)) assign(name, params[[name]], envir = environment())
-  sig2_a <- sigma_a^2
-  th2 = theta_d^2
-  denom <- 1 - th2
-  Sigma_ub <- Q_d / denom
-  A_bar <- mu_a * (Sigma_ub + sig2_a) + softplus(kappa)
-  
-  if (mu_a <= 0 || sigma_a <= 0 || Q_d <= 0 || theta_d <= 0 || theta_d >=1 || alpha_1 < 0 || alpha_2 < 0 || phi_d < 0){
-    print('constraint violation'); return(-BIGPEN)
-  } 
-  if (denom <= EPS){
-    print('failed denom'); return(-BIGPEN) }
-  
-  n = nrow(DT)
-  Sigma_tt  = numeric(n); Sigma_t1t = numeric(n); Sigma_t1t1 = numeric(n)
-  Ex_tt = numeric(n); Ex_t1t1 = numeric(n)
-
-  ## Kalman Iteration 
-  for (k in ages){
-    
-    idx = rows_by_age[[k+1]]
-    # IF K= 0 invert E_x10 to obtain Sigma_tt and Ex_tt
-    if(k== 0){
-      E_x10 = Ex_t1t[idx]
-      x_bar0 = x_bar[idx]
-      Sigma_00 <- ((A_bar - E_x10 / pmax(x_bar0, EPS)) / pmax(mu_a, EPS) - sig2_a - Q_d) / pmax(th2, EPS)
-      Sigma_00[!is.finite(Sigma_00)] <- 0.5 * Sigma_ub
-      Sigma_00 = pmin(pmax(Sigma_00, EPS), Sigma_ub - 1e-6)
-      Sigma_tt[idx] =Sigma_00
-      Ex_tt[idx] = x_bar0 * (A_bar - mu_a*(Sigma_00 + sig2_a)) 
-    }
-    # IF K!= 0 obtain Sigma_tt and Ex_tt from the previous iteration 
-    if (k!=0){ 
-      Sigma_tt[idx] = Sigma_t1t1[prev_idx[idx]]
-      Ex_tt[idx] =  Ex_t1t1[prev_idx[idx]]
-    }
-    
-    # Apply our kalman filter results 
-    Sigma_t1t[idx] = pmax(th2 *Sigma_tt[idx] + Q_d, EPS)
-      # propose a value R 
-      R_prop <- phi_d * pospow(L_t[idx], alpha_1) * pospow(Ex_tt[idx], alpha_2) + 1/sig2_a
-      if (any(!is.finite(R_prop) | R_prop <= 0)){
-        print('FAILED R'); 
-        return(-BIGPEN)}
-      
-      # 2) optionally cap precision to enforce K ≤ K_max in a Σ-aware way
-      if (isTRUE(cap_cfg$enabled)) R_t1 <- cap_precision(R_prop, Sigma_t1t[idx], K_max = cap_cfg$K_max, mode = cap_cfg$mode)
-      if (isFALSE(cap_cfg$enabled))  R_t1 <- R_prop
-     
-      # 3) stable gain formula: K = 1 / (1 + (1/R)/Σ)
-      K_t1 <- 1 / (1 + (1 / R_t1) / pmax(Sigma_t1t[idx], EPS))
-      
-    
-    if (k != last_age){
-      # joseph form of final update
-      Sigma_t1t1[idx] <- (1 - K_t1) * Sigma_t1t[idx] * (1 - K_t1) + K_t1 * (1 / R_t1) * K_t1
-      Ex_t1t1[idx] = x_bar[idx] * (A_bar - mu_a*(Sigma_t1t1[idx] + sig2_a)) 
-    }
-  }
-
-  ## drop first observation of streak
-  idx_FE = which(DT$age >= 4 & !is.na(DT$FE_t1_t))
-  
-  # Build S = xbar * mu_a * (Sigma_{t+1|t} + sigma_a^2)
-  Sig_t1t = Sigma_t1t[idx_FE]
-  xbar_i = pmax(x_bar[idx_FE], EPS)
-  S = xbar_i * mu_a * (Sig_t1t + sig2_a)
-  
-  ## calculate the likelihood
-  if(likelihood_type == 'gaussian'){
-    ll = sum(dnorm(FE_t1t[idx_FE], mean = 0, sd = sqrt(2)*S, log = TRUE))
-  }
-  if(likelihood_type == 'exact'){
-
-    pi_mix <- 0.05   # start with 5% weight, or estimate in [0,0.2]
-    
-    U <- 1 - FE_t1t[idx_FE] / pmax(S, EPS)
-    f_exact <- dchisq(U, df=1, log=FALSE) / pmax(S, EPS)
-    f_gauss <- dnorm(FE_t1t[idx_FE], mean=0, sd = sqrt(2)*S)
-    
-    ll <- sum(log( (1 - pi_mix)*pmax(f_exact, 1e-300) +
-                     pi_mix    *pmax(f_gauss, 1e-300) ))
-     # U <- 1 - FE_t1t[idx_FE] / pmax(S, EPS)
-     # if (any(!is.finite(U) | U <= 0)) {
-     #   print(paste0('failed support: ', sum(any(!is.finite(U) | U <= 0)))) 
-     #   ll = -BIGPEN
-     # } else {
-     #   # f_FE(f) = f_chi2(U; df=1) * (1 / S)
-     #   ll = sum(dchisq(U, df = 1, log = TRUE) - log(pmax(S, EPS)))
-     # }
-  }
-  #cat(sprintf("LogLik (%s): %.6f\n", likelihood_type, ll))
-  return(ll)
-}
-make_start = function(){
-  # rough data-driven scales
-  fe_sd  <- sqrt(mean(FE_t1t^2, na.rm = TRUE))
-  xb_med <- median(x_bar, na.rm = TRUE)
-  L_med  <- median(pmax(L_t, 1), na.rm = TRUE)
-  
-  c(
-    kappa   = 0,                               # softplus(0) ~ 0.69
-    mu_a    = runif(1, 0.01, 2),               # positive
-    phi_d   = 1 / max(L_med, 1),               # scale with L
-    alpha_1 = runif(1, 0.1, .9),
-    alpha_2 = runif(1, 0.1, .9),
-    sigma_a = max(fe_sd / max(xb_med, 1), 0.3),
-    Q_d     = runif(1, 0.05, 1.0),
-    theta_d = runif(1, 0.2, 0.9)               # inside (0,1)
-  )
-}
-nll_obj = function(params, likelihood_type){
-  params = params[names(LB)] # enforce order
-  params = as.list(params)
-  ll = log_likelihood_wrapper(params, likelihood_type = likelihood_type)
-  if (!is.finite(ll)) return(1e12)
-  -ll
-}
-run_lbfgsb <- function(start, likelihood_type, control = list()) {
-  start <- pmin(pmax(start, LB), UB)  # clip to box
-  optim(
-    par     = start[names(LB)],
-    fn      = nll_obj,
-    likelihood_type = likelihood_type,
-    method  = "L-BFGS-B",
-    lower   = LB,
-    upper   = UB,
-    control = modifyList(list(maxit = 4000, factr = 1e8, pgtol = 1e-8,lmm = 8, parscale = abs(start) + 1),
-                         control)
-  )
-}
-run_mle <- function(likelihood_type = c("gaussian","exact"), n_starts = 8, control = list()) {
-  likelihood_type <- match.arg(likelihood_type)
-  set.seed(1)
-  
-  #Generate the random parameter starts 
-  starts <- replicate(n_starts, make_start(), simplify = FALSE)
-  
-  # evaluate each
-  fits <- lapply(1:n_starts, function(s){print(paste0('start: ', s,"/", n_starts)); run_lbfgsb(starts[[s]], likelihood_type, control)}) 
-  nlls <- vapply(fits, `[[`, numeric(1), "value")
-  best <- which.min(nlls)
-  fit  <- fits[[best]]
-  if (fit$convergence != 0){
-    fit <- run_lbfgsb(fit$par, likelihood_type, control = list(maxit=6000, factr=1e9, pgtol=1e-9, lmm=6))
-  }
- 
-  # tidy output
-  par_hat <- fit$par
-  nll_hat <- fit$value
-  conv    <- fit$convergence
-  
-  # output A_Bar
-  th2_hat      <- par_hat["theta_d"]^2
-  denom_hat    <- 1 - th2_hat
-  Sigma_ub_hat <- par_hat["Q_d"] / denom_hat
-  sig2_hat     <- par_hat["sigma_a"]^2
-  par_hat['A_bar'] = par_hat["mu_a"] * (Sigma_ub_hat + sig2_hat) + softplus(par_hat["kappa"])
-  
-  output = list(
-    likelihood_type = likelihood_type,
-    par = par_hat,
-    nll = nll_hat,
-    ll  = -nll_hat,
-    convergence = conv,        # 0 == success
-    message = fit$message
-  )
-  return(output)
-}
-
-# introduces a cap for the value of R --> stops us from collapsing to Sigma = 0
-cap_precision <- function(R_prop, Sigma_pred, K_max, mode = c("smooth","hard")) {
-  mode <- match.arg(mode)
-  # Ensure Σ>0
-  Sigma_pred <- pmax(Sigma_pred, EPS)
-  
-  # For K = Σ/(Σ + R^{-1}) ≤ K_max  ⇔  R ≤ 1 / ( Σ * ((1/K_max)-1) )
-  denom <- (1 / K_max) - 1
-  R_cap_i <- 1 / (pmax(Sigma_pred * denom, EPS))  # per-observation cap on precision
-  
-  if (mode == "hard") {
-    return(pmin(R_prop, R_cap_i))
-  } else {
-    # Smooth cap (C^∞, monotone, no kinks): saturates at R_cap_i as R_prop → ∞
-    # Equivalent to R_cap_i * (1 - exp(-R_prop / R_cap_i))
-    return(R_cap_i * (1 - exp(-R_prop / pmax(R_cap_i, EPS))))
-  }
-}
-cap_cfg <- list(enabled = F, mode    = "smooth",  K_max   = 0.95,  log = F     )
-
-## SETUP 
-DT= combined_dta
-ages <- sort(unique(combined_dta$age))
-rows_by_age <- lapply(ages, function(a) combined_dta[age == a, idx])
-x_bar <- combined_dta$x_bar 
-L_t    <- combined_dta$L_t
-FE_t1t   <- combined_dta$FE_t1_t
-Ex_t1t   <- combined_dta$E_x_t1_t
-prev_idx <- combined_dta$prev_row_idx
+## define key vectors 
+ages <- sort(unique(dta$age))
+rows_by_age <- lapply(ages, function(a) dta[age == a, idx])
+prev_idx <- dta$prev_row_idx
+n = nrow(dta)
+scale_L = median(dta$L_t, na.rm=TRUE)
+scale_E = median(dta$E_xt_tminus1, na.rm=TRUE)
+L_t = dta$L_t / scale_L # we use scaled versions of L_t and E_xt_tminus1 which means what we estimate is tilde_phi_d = phi_d*scale_L*scale_E
+E_xt_tminus1 = dta$E_xt_tminus1 / scale_E
+FE_tplus1_t = dta$FE_tplus1_t
+idx_FE = dta$age >= min_age_for_likelihood  & !is.na(FE_tplus1_t)
+x_bar = dta$x_bar
 EPS    <- 1e-10
-BIGPEN <- 1e8
 
-last_age <- max(ages)
-LB <- c(kappa = -Inf, mu_a = 1e-6, phi_d = 1e-6, 
-        alpha_1 = 0, alpha_2 = 0, sigma_a = 1e-6,
-        Q_d = 1e-8, theta_d = 1e-6)
-
-UB <- c(kappa = Inf, mu_a = Inf, phi_d = Inf,
-        alpha_1 = 1 - 1e-6, alpha_2 = 1 - 1e-6, # guarantee decreasing marginal returns 
-        sigma_a = Inf, Q_d = Inf, theta_d = 1 - 1e-6) # < 1 for stationarity
-
-## RUN MLE 
-h = run_mle("exact", n_starts = 10)
+eta0 = list(mu_a_raw = softplus_inv(1.2), 
+           phi_d_tilde_raw = .1*scale_L*scale_E,
+           alpha_1_raw = qlogis(.5),
+           alpha_2_raw = qlogis(.1), 
+           sigma_a_raw = softplus_inv(1.1777),
+           Q_d_raw = softplus_inv(.66),
+           theta_d_raw = qlogis(.45),
+           #kappa_raw = 0,
+           f0_raw = qlogis(.5))
+eta_names = names(eta0)
 
 
+# log_likelihood calc  -------------------------------------------------------
+calc_log_likelihood = function(eta, mode = c('calc', 'diagnostic')){
+mode = match.arg(mode)
+params = map_params(eta)
+
+## ACTUAL FUNCTION 
+for (name in names(params)) assign(name, params[[name]], envir = environment())
+sig2_a <- sigma_a^2
+th2 = theta_d^2
+Sigma_ub <- Q_d / (1 - th2) #theta is bounded (0,1)
+#A_bar <- mu_a * (Sigma_ub + sig2_a) + softplus(kappa)
+
+#Initialize Sigma_tt --> set all firms initial uncertainty to .5*Sigma_ub
+idx = rows_by_age[[1]]
+Sigma_t_t = numeric(n); Sigma_tplus1_t = numeric(n); Sigma_t_tminus1 = numeric(n); R_t = numeric(n); K_t = numeric(n)
+Sigma_t_t[idx] = f0*Sigma_ub
+Sigma_tplus1_t[idx] = Sigma_t_t[idx]*th2 + Q_d
+
+for (k in ages[-1]){
+  idx = rows_by_age[[k+1]]
+  Sigma_t_tminus1[idx] = pmax(Sigma_tplus1_t[prev_idx[idx]],0)
+  R_t[idx] = phi_d_tilde*L_t[idx]^alpha_1*E_xt_tminus1[idx]^alpha_2 + sig2_a^(-1) #note that transformed min L_t =.019, min E_xt_tminus1 = .0095 so not going to do pos protections 
+  R_t[idx] = pmax(R_t[idx], EPS)
+  K_t[idx] = Sigma_t_tminus1[idx]/ (Sigma_t_tminus1[idx] + R_t[idx]^(-1))
+  Sigma_t_t[idx] = (1- K_t[idx]) * Sigma_t_tminus1[idx]; Sigma_t_t[idx] = pmax(Sigma_t_t[idx], 0)
+  Sigma_tplus1_t[idx] = pmax(Sigma_t_t[idx]*th2 + Q_d, EPS)
+}
+
+## perform the likelihood 
+pi_mix <- 0.01   # amount of guassian in estimation. Stops us falling off cliffs 
+S = x_bar[idx_FE] * mu_a * (Sigma_tplus1_t[idx_FE] + sig2_a) # note with our earlier bounding of Sigma_tplus1_t, this is guaranteed positive 
+U = 1 - FE_tplus1_t[idx_FE] / S 
 
 
+log_exact <- dchisq(U, df=1, log=TRUE) - log(S)
+log_norm  <- dnorm(FE_tplus1_t[idx_FE], mean=0, sd=sqrt(2)*S, log=TRUE)
 
+log_a <- log1p(-pi_mix) + log_exact
+log_b <- log(pi_mix)    + log_norm
+ll    <- matrixStats::rowLogSumExps(cbind(log_a, log_b))  
+ll_sum <- sum(ll)
+nll = -ll_sum
+if (mode == 'calc'){ return(nll)}
+if (mode == 'diagnostic'){
+output = dta %>% 
+  .[,.(isin,x_bar, fiscal_year,age, FE_tplus1_t,
+       L_t,E_xt_tminus1, Sigma_tplus1_t, Sigma_t_t)] %>% 
+  .[idx_FE == T, ll := ll]
+return(list(output_df = output, output_params = params))
+}
+}                               
+obj <- function(eta) calc_log_likelihood(eta, 'calc' )
+res <- nloptr::nloptr(
+  x0 = as.numeric(eta0),
+  eval_f = function(x) list(objective = obj(x), gradient = numeric(length(x))),
+  opts = list(algorithm = "NLOPT_LN_BOBYQA", maxeval = 5000L, xtol_rel = 1e-8)
+)
+par_hat <- map_params(res$solution)
+output = calc_log_likelihood(par_hat, 'diagnostic')
+output_params = output$output_params
+output_df =output$output_df
+NA_mean(dta$E_xtplus1_t / dta$x_bar +
+          output_params$mu_a*(output_df$Sigma_tplus1_t + output_params$sigma_a^2))
 
-
-
-
-
-
-
-
-
-  
+output_params$Q_d / output_params$theta_d^2 + output_params$sigma_a^2 
 
 
