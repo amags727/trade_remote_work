@@ -134,10 +134,12 @@ ll_sum <- sum(ll)
 nll = -ll_sum
 if (mode == 'calc'){ return(nll)}
 if (mode == 'diagnostic'){
-output = dta %>% 
-  .[,.(isin,x_bar, fiscal_year,age, FE_tplus1_t,
-       L_t,E_xt_tminus1, Sigma_tplus1_t, Sigma_t_t)] %>% 
+output = dta %>% .[,.(isin,x_bar, fiscal_year,age, FE_tplus1_t,
+                      L_t,E_xt_tminus1, Sigma_tplus1_t, Sigma_t_t)] %>% 
   .[idx_FE == T, ll := ll]
+
+params$A_bar_calc =  NA_mean(dta$E_xtplus1_t / dta$x_bar + mu_a*(output$Sigma_tplus1_t + sig2_a))
+params$A_bar_nonneg_qual = Q_d / th2 + sig2_a
 return(list(output_df = output, output_params = params))
 }
 }                               
@@ -151,9 +153,6 @@ par_hat <- map_params(res$solution)
 output = calc_log_likelihood(par_hat, 'diagnostic')
 output_params = output$output_params
 output_df =output$output_df
-NA_mean(dta$E_xtplus1_t / dta$x_bar +
-          output_params$mu_a*(output_df$Sigma_tplus1_t + output_params$sigma_a^2))
 
-output_params$Q_d / output_params$theta_d^2 + output_params$sigma_a^2 
 
 
