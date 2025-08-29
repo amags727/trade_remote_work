@@ -46,7 +46,9 @@ uncertainty_dta = import_file(raw_bs_br_path,col_select = c('firmid_num', 'year'
   .[ firmid_num %in% linkedin_firm_yr$firmid_num] %>% 
   .[, `:=`(log_dom_turnover = asinh(dom_turnover), log_labor_cost = asinh(labor_cost), log_capital = asinh(capital))] %>% 
   merge(import_file(firm_lvl_birth_path, col_select = c('firmid_num', 'birth_year')), by = 'firmid_num') %>% 
-  .[year >= birth_year, log_age := asinh(year -birth_year)]
+  .[year >= birth_year, log_age := asinh(year -birth_year)] %>% 
+  unbalanced_lag(., 'firmid_num', 'year','dom_turnover', 1:3) %>% 
+  .[, log_dom_turnover_prior3 := asinh(rowMeans(.SD, na.rm = TRUE)), .SDcols = paste0('dom_turnover_lag',1:3)]
 
 ## run initial regression 
 forecast_model = feols(uncertainty_dta, log_dom_turnover ~ log_labor_cost + log_capital + log_age| firmid_num + year)
@@ -74,7 +76,7 @@ uncertainty_dta = merge(ar1, uncertainty_dta, by= 'firmid_num') %>%
   .[, residual_var_prior5_strict := apply(.SD, 1, var), .SDcols = paste0('eps_AR1_lag', 1:5)] %>% 
   .[, residual_var_prior3 := apply(.SD, 1, var, na.rm = TRUE), .SDcols = paste0('eps_AR1_lag', 1:3)] %>% 
   .[, residual_var_prior3_strict := apply(.SD, 1, var), .SDcols = paste0('eps_AR1_lag', 1:3)] %>% 
-  select('firmid_num', 'year', con_fil(.,'residual_var_prior'))
+  select('firmid_num', 'year', con_fil(.,'residual_var_prior'), 'log_dom_turnover_prior3')
 
 write_parquet(uncertainty_dta, uncertainty_proxy_path)
 }
@@ -155,11 +157,11 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
   # Create capital intensity as capital to total revenue
   output[, capital_intensity:=ifelse(turnover==0, NA, log(capital/(turnover)))]
   
+  ### ADD IN THE PRIOR UNCERTAINTY VALUES 
+  output = merge(output, import_file(uncertainty_proxy_path), all.x = T, by = c('firmid_num','year'))
+  
   ## ADD SIZE VARIABLES 
   output = output[, log_dom_turnover_bar := asinh(NA_mean(dom_turnover)), by = firmid_num] %>% 
-        unbalanced_lag(., 'firmid_num', 'year','dom_turnover', 1:3) %>% 
-       .[, log_dom_turnover_prior3 := asinh(rowMeans(.SD, na.rm = TRUE)), .SDcols = paste0('dom_turnover_lag',1:3)] %>% 
-       .[,paste0('dom_turnover_lag',1:3) := NULL] %>% 
        .[, ever_data := any(comp_data >0), by = firmid_num] 
   
   bar_quartiles = output[, .SD[1], by = .(firmid_num, NACE_BR)] %>%
@@ -170,9 +172,7 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
 
   output = merge(output, bar_quartiles, all.x = T, by = 'firmid_num')
   
-  ### ADD IN THE PRIOR UNCERTAINTY VALUES 
-  output = merge(output, import_file(uncertainty_proxy_path), all.x = T, by = c('firmid_num','year'))
-  
+ 
  
     
   
