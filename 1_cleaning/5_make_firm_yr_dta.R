@@ -37,6 +37,48 @@ NACE_2d_info = if(!dummy_version){
     data.table(NACE_2d = 0:5, industry_category = letters[1:6]) 
   }
 
+
+# generate the uncertainty proxy -----------------------------------------------------------------------
+making_uncertainty_proxy = T
+if (making_uncertainty_proxy){
+# import data 
+uncertainty_dta = import_file(raw_bs_br_path,col_select = c('firmid_num', 'year', 'dom_turnover', 'labor_cost', 'capital')) %>% 
+  .[ firmid_num %in% linkedin_firm_yr$firmid_num] %>% 
+  .[, `:=`(log_dom_turnover = asinh(dom_turnover), log_labor_cost = asinh(labor_cost), log_capital = asinh(capital))] %>% 
+  merge(import_file(firm_lvl_birth_path, col_select = c('firmid_num', 'birth_year')), by = 'firmid_num') %>% 
+  .[year >= birth_year, log_age := asinh(year -birth_year)]
+
+## run initial regression 
+forecast_model = feols(uncertainty_dta, log_dom_turnover ~ log_labor_cost + log_capital + log_age| firmid_num + year)
+non_dropped_obs = setdiff(1:nrow(uncertainty_dta),-1*forecast_model$obs_selection$obsRemoved)
+
+uncertainty_dta = uncertainty_dta[non_dropped_obs, forecast_resid := forecast_model$residuals] %>% 
+  unbalanced_lag(.,'firmid_num', 'year', 'forecast_resid', 1) %>%
+  .[, complete_info := !is.na(forecast_resid) & !is.na(forecast_resid_lag1)]
+
+ar1 = uncertainty_dta[complete_info == T, .(rho_hat = if (.N >= 3) coef(lm(forecast_resid ~ 0 + forecast_resid_lag1))[[1]] else NA_real_,
+                          Tobs = .N),by = firmid_num]
+
+# global mean rho (precision-weighted)
+rho_bar <- with(ar1[!is.na(rho_hat)], weighted.mean(rho_hat, pmax(Tobs - 2, 1)))
+
+# simple shrinkage toward rho_bar
+ar1[, lambda := pmin(1, Tobs/8)]
+ar1[, rho_shrunk := ifelse(is.na(rho_hat), rho_bar, lambda*rho_hat + (1-lambda)*rho_bar)]
+uncertainty_dta = merge(ar1, uncertainty_dta, by= 'firmid_num') %>% 
+  .[is.na(rho_shrunk), rho_shrunk := rho_bar] %>%  
+  .[,forecast_resid_AR1 := rho_shrunk * forecast_resid_lag1] %>%
+  .[,eps_AR1 := forecast_resid - forecast_resid_AR1] %>% 
+  unbalanced_lag(., 'firmid_num', 'year', 'eps_AR1', 1:5) %>% 
+  .[, residual_var_prior5 := apply(.SD, 1, var, na.rm = TRUE), .SDcols = paste0('eps_AR1_lag', 1:5)] %>% 
+  .[, residual_var_prior5_strict := apply(.SD, 1, var), .SDcols = paste0('eps_AR1_lag', 1:5)] %>% 
+  .[, residual_var_prior3 := apply(.SD, 1, var, na.rm = TRUE), .SDcols = paste0('eps_AR1_lag', 1:3)] %>% 
+  .[, residual_var_prior3_strict := apply(.SD, 1, var), .SDcols = paste0('eps_AR1_lag', 1:3)] %>% 
+  select('firmid_num', 'year', con_fil(.,'residual_var_prior'))
+
+write_parquet(uncertainty_dta, uncertainty_proxy_path)
+}
+
 # prepare output  ---------------------------------------------------------
 suffixes = c('customs', 'BS')
 vars_to_cond = c('num_mkts', 'products_per_ctry', gpaste('total_export_rev_' ,suffixes))
@@ -54,7 +96,6 @@ bs_data = bs_data %>% arrange(empl) %>% mutate(bs_data,
 linkedin_firm_yr = linkedin_firm_yr %>% 
   .[, NACE_2d := as.integer(substr(as.character(str_pad(NACE_BR, 4, side="left", pad="0")), 1, 2))] %>% 
   merge(NACE_2d_info, all.x = T)
-
 
 
 output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>% 
@@ -113,6 +154,28 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
   output = output %>% unbalanced_lag(., 'firmid_num', 'year',con_fil(., 'share_export'), 1)
   # Create capital intensity as capital to total revenue
   output[, capital_intensity:=ifelse(turnover==0, NA, log(capital/(turnover)))]
+  
+  ## ADD SIZE VARIABLES 
+  output = output[, log_dom_turnover_bar := asinh(NA_mean(dom_turnover)), by = firmid_num] %>% 
+        unbalanced_lag(., 'firmid_num', 'year','dom_turnover', 1:3) %>% 
+       .[, log_dom_turnover_prior3 := asinh(rowMeans(.SD, na.rm = TRUE)), .SDcols = paste0('dom_turnover_lag',1:3)] %>% 
+       .[,paste0('dom_turnover_lag',1:3) := NULL] %>% 
+       .[, ever_data := any(comp_data >0), by = firmid_num] 
+  
+  bar_quartiles = output[, .SD[1], by = .(firmid_num, NACE_BR)] %>%
+   .[, log_dom_turnover_bar_quartile := ntile(log_dom_turnover_bar, 4)] %>% 
+   .[, log_dom_turnover_bar_quartile_nace := ntile(log_dom_turnover_bar, 4), by = NACE_BR] %>% 
+   .[ever_data== T, log_dom_turnover_bar_quartile_ever_data :=  ntile(log_dom_turnover_bar, 4)] %>% 
+    select(con_fil(., 'bar_quartile', 'firmid_num')) 
+
+  output = merge(output, bar_quartiles, all.x = T, by = 'firmid_num')
+  
+  ### ADD IN THE PRIOR UNCERTAINTY VALUES 
+  output = merge(output, import_file(uncertainty_proxy_path), all.x = T, by = c('firmid_num','year'))
+  
+ 
+    
+  
   
 write_parquet(output,firm_yr_path)
 rm(list= setdiff(ls(), c(base_env))); gc()

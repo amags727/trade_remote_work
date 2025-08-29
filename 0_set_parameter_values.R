@@ -39,6 +39,7 @@ dummy_version = getwd() != "C:/Users/Public/Documents/Big data Project";
   firm_yr_path = '1) data/10_firm_yr_lvl_dta.parquet'
   firm_euro_yr_path = '1) data/10a_firm_euro_yr_lvl_dta.parquet'
   firm_yr_summary_stats_path = '1) data/11_firm_yr_summary_stats_input.parquet'
+  uncertainty_proxy_path = '1) data/13_uncertainty_proxy_dta.parquet'
   
   #6 make firm ctry yr data 
   extended_grav_path = '1) data/0_misc_data/0d_all_countries_all_years_all_firms_grav_data.parquet'
