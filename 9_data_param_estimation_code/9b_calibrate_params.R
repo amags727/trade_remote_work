@@ -32,6 +32,12 @@ map_params = function(eta, theta_max = .999, alpha_max = .999){
   )
 }
 
+eval_g_ineq <- function(x){
+  x_mapped <- map_params(x)
+  params=  calc_log_likelihood(x_mapped, 'diagnostic')[['output_params']]
+  return(params$A_bar_nonneg_qual - params$A_bar_calc)  
+}
+
 # import and clean dta -----------------------------------------------------------------------
 min_streak_length = 8
 interest_year_range = year_range
@@ -140,19 +146,35 @@ output = dta %>% .[,.(isin,x_bar, fiscal_year,age, FE_tplus1_t,
 
 params$A_bar_calc =  NA_mean(dta$E_xtplus1_t / dta$x_bar + mu_a*(output$Sigma_tplus1_t + sig2_a))
 params$A_bar_nonneg_qual = Q_d / th2 + sig2_a
+params$theta = -log(theta_d); 
+params$Q = 2*Q_d*params$theta/ (1-th2)
 return(list(output_df = output, output_params = params))
 }
 }                               
 obj <- function(eta) calc_log_likelihood(eta, 'calc' )
+
+## un-constrained version 
+# res_uc <- nloptr::nloptr(
+#   x0 = as.numeric(eta0),
+#   eval_f = function(x) list(objective = obj(x), gradient = numeric(length(x))),
+#   opts = list(algorithm = "NLOPT_LN_BOBYQA", maxeval = 5000L, xtol_rel = 1e-8)
+# )
+
+## A_bar constrained to guarantee weakly positive demand 
 res <- nloptr::nloptr(
   x0 = as.numeric(eta0),
   eval_f = function(x) list(objective = obj(x), gradient = numeric(length(x))),
-  opts = list(algorithm = "NLOPT_LN_BOBYQA", maxeval = 5000L, xtol_rel = 1e-8)
+  eval_g_ineq = eval_g_ineq,
+  opts = list(algorithm="NLOPT_LN_COBYLA", maxeval=5000, xtol_rel=1e-8)
 )
+
 par_hat <- map_params(res$solution)
 output = calc_log_likelihood(par_hat, 'diagnostic')
 output_params = output$output_params
-output_df =output$output_df
+output_params = output$output_params 
+output_params = data.frame(variable = names(output_params), value = unlist(output_params))
+fwrite(output_params,'1) data/11_parameter_calibration/clean/parameter_output.csv')
+
 
 
 
