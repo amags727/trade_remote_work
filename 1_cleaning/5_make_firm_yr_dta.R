@@ -164,17 +164,16 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
   output = output[, log_dom_turnover_bar := asinh(NA_mean(dom_turnover)), by = firmid_num] %>% 
        .[, ever_data := any(comp_data >0), by = firmid_num] 
   
-  bar_quartiles = output[, .SD[1], by = .(firmid_num, NACE_BR)] %>%
+  bar_quartiles = output[!is.na(NACE_BR), count_nace_obs := .N, by = .(firmid_num, NACE_BR)] %>%
+    arrange(-count_nace_obs) %>% .[, .SD[1], by = .(firmid_num)] %>% 
    .[, log_dom_turnover_bar_quartile := ntile(log_dom_turnover_bar, 4)] %>% 
-   .[, log_dom_turnover_bar_quartile_nace := ntile(log_dom_turnover_bar, 4), by = NACE_BR] %>% 
+   .[!is.na(NACE_BR), log_dom_turnover_bar_quartile_nace := ntile(log_dom_turnover_bar, 4), by = NACE_BR] %>% 
    .[ever_data== T, log_dom_turnover_bar_quartile_ever_data :=  ntile(log_dom_turnover_bar, 4)] %>% 
     select(con_fil(., 'bar_quartile', 'firmid_num')) 
 
   output = merge(output, bar_quartiles, all.x = T, by = 'firmid_num')
   
- 
- 
-    
+
   
   
 write_parquet(output,firm_yr_path)
