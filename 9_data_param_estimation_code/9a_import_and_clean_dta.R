@@ -43,7 +43,7 @@ WITH first_guidance AS (
     FROM ibes.det_guidance
     WHERE pdicity = 'ANN' and measure = 'SAL'
     )
-SELECT c.item6038 AS ibes_ticker,c.item6008 AS isin, f.year_ AS fiscal_year, c.item6011  AS industry_group,
+SELECT f.item7011 as wrds_empl, c.item6038 AS ibes_ticker,c.item6008 AS isin, f.year_ AS fiscal_year, c.item6011  AS industry_group,
   c.item6026 AS nation, f.item7240 AS net_sales_usd, g.measure, g.curr AS forecast_curr, g.units AS forecast_units, g.anndats, g.val_1, g.val_2,
   f.item5350 AS fiscal_year_enddate, f.item7034 AS data_update, c.item18272 AS birth_date, c.item18273 AS incorporation_date
   FROM trws.wrds_ws_funda f
@@ -52,7 +52,7 @@ SELECT c.item6038 AS ibes_ticker,c.item6008 AS isin, f.year_ AS fiscal_year, c.i
   WHERE f.item6038 IS NOT NULL AND f.freq = 'A'") %>% as.data.table() %>% 
   .[is.na(fiscal_year_enddate), fiscal_year_enddate := as.Date(paste0(fiscal_year, '-12-31'))] %>% 
   .[, fiscal_year_startdate := fiscal_year_enddate %m-% years(1) + days(1)] %>%  
-  .[,forecast_window := as.numeric(difftime(fiscal_year_enddate, t1, units = "days")) / 365.25] %>% 
+  .[,forecast_window := as.numeric(difftime(fiscal_year_enddate,anndats , units = "days")) / 365.25] %>% 
   .[, birth_year := ifelse(is.na(birth_date), year(birth_date), year(incorporation_date))] %>% 
   .[, age := fiscal_year - birth_year] %>% 
   .[!is.na(isin)] %>% 
@@ -60,11 +60,12 @@ SELECT c.item6038 AS ibes_ticker,c.item6008 AS isin, f.year_ AS fiscal_year, c.i
 write_parquet(firm_financial_dta, '1) data/11_parameter_calibration/raw/firm_financial_dta.parquet')
 
 ## IMPORT THE ROLE DATA 
-us_french_financials = import_file('1) data/11_parameter_calibration/raw/firm_financial_dta.parquet',
-  col_select = c( 'nation', 'fiscal_year','fiscal_year_startdate','fiscal_year_enddate', 'isin')) %>% 
-  .[nation %in%  c('UNITED STATES', 'FRANCE')] 
-isins <- unique(na.omit(us_french_financials$isin));
-isins_list = split(isins, cut(seq_along(isins), 100, labels = FALSE))
+financials = import_file('1) data/11_parameter_calibration/raw/firm_financial_dta.parquet',
+  col_select = c( 'nation', 'fiscal_year','fiscal_year_startdate','fiscal_year_enddate', 'isin')) 
+
+isins = financials$isin %>% unique() %>% sample()
+
+isins_list = split(isins, cut(seq_along(isins), 500, labels = FALSE))
 role_dict = import_file('1) data/7_revelio_data/b_processed_data/linkedin/revelio_role_dict.csv')
 temp_dir = '1) data/11_parameter_calibration/raw/temp'; dir.create(temp_dir)
 for (i in 1:length(isins_list)){
@@ -92,7 +93,7 @@ for (i in 1:length(isins_list)){
   ## collapse to ISIN-year level
   temp = rbindlist(lapply(2000:2024, function(yr){
 
-    sub_temp = us_french_financials[fiscal_year == yr & isin %in% isins_list[[i]]] %>%
+    sub_temp = financials[fiscal_year == yr & isin %in% isins_list[[i]]] %>%
       merge(isin_temp) %>% merge(temp, by = 'isin_num') %>% 
       .[startdate <= fiscal_year_startdate  & (enddate >= fiscal_year_enddate | is.na(enddate))]  %>% 
       .[, .(comp_total = sum(comp), empl_total = sum(weight),
@@ -129,7 +130,7 @@ base_deflator_val = deflator_dta[date == as.Date('2025-01-01')][['gdp_def']]
 deflator_dta[, gdp_def := base_deflator_val/ gdp_def]
 
 
-role_data = import_file('1) data/11_parameter_calibration/raw/firm_role_dta.parquet') 
+role_data = import_file('1) data/11_parameter_calibration/raw/firm_role_dta.parquet')
 combined_dta = import_file('1) data/11_parameter_calibration/raw/firm_financial_dta.parquet') %>% 
   
   ## filter to keep only US / French Firms without messed up guidance 
@@ -164,24 +165,23 @@ combined_dta = import_file('1) data/11_parameter_calibration/raw/firm_financial_
     unbalanced_lag(., 'isin', 'fiscal_year', con_fil(.,'t_tminus1'), -1) %>% 
     rename_with(.cols = con_fil(., 'lead1'), ~gsub('_lead1', '',.) %>% gsub('t_tminus1', 'tplus1_t',.)) %>%
     
- 
   ## merge in role data and clean compensation to match other units 
   merge(role_data,all.y = T,  by = c('isin', 'fiscal_year')) %>% 
   .[,`:=`(comp_total = comp_total*1e-6, comp_data = comp_data*1e-6)] %>%
   .[,use_data := comp_data > 0] %>% 
   unbalanced_lag(., 'isin', 'fiscal_year', c('comp_data', 'comp_total', 'use_data'), 1) %>%
-  rename_with(.cols = con_fil(., 'lag1'), ~gsub('_lag1', '_tminus1',.)) 
+  rename_with(.cols = con_fil(., 'lag1'), ~gsub('_lag1', '_tminus1',.)) %>% mutate(
+    across(con_fil(., 'FE'), ~abs(.), .names = 'abs_{.col}')) %>% mutate(
+    across(c(con_fil(.,'comp', 'abs', 'x')), ~asinh(.), .names = 'log_{.col}')) %>% 
+  .[fiscal_year %in% year_range, x_bar := NA_mean(xt), by = isin] %>%
+  .[, log_x_bar := asinh(x_bar)] %>% 
+  .[, industry_yr := .GRP , by = .(industry_group, fiscal_year)] %>% 
+  .[!is.na(wrds_empl) & !is.na(empl_total), empl_ratio := empl_total / wrds_empl]
+
+  
+
 write_parquet(combined_dta,'1) data/11_parameter_calibration/clean/combined_firm_dta.parquet') 
 
-
-
-
-
-
-
-
-#feols(combined_dta[fiscal_year %in% year_range], log_abs_forecast_error ~ log_comp_data +log_comp_total+ log_sales_forecast + log_sales_forecast_sq| fiscal_year + isin)
-#feols(combined_dta[fiscal_year %in% year_range], log_abs_forecast_error ~ log_comp_data +log_comp_total+ log_sales_forecast + log_sales_forecast_sq| fiscal_year + industry_group)
 
 
 
