@@ -34,29 +34,31 @@ entry_command = reg_command(dataset = 'firm_yr', dep_var = 'currently_export_BS'
 int_entry_command = gsub('log_comp_data \\+ log_comp_data_lag1','log_comp_data*interaction + log_comp_data_lag1*interaction', entry_command)
 
 # 2 generate variations ----------------------------------------------------------------------
-interactions = c('log_dom_turnover_bar',con_fil(firm_yr, 'prior'))
+interactions = c('log_dom_turnover_bar', con_fil(firm_yr, 'prior'))
 baseline_regs = data.frame(command = c(rev_command, entry_command))
 
 size_quartile_regs = data.table(
-  command = rep(c(rev_command,rev_command, entry_command), each = 4), quartile_num = rep(1:4,3),
-  intensive_margin = rep(c(F,T,F), each =4)) %>% rowwise() %>% 
-  mutate(command = gsub('firm_yr', paste0('firm_yr[log_dom_turnover_bar_quartile==', quartile_num,']'), command)) %>%
-  as.data.table() %>% 
-  .[intensive_margin == T, command := gsub('firm_yr\\[', 'firm_yr[currently_export_BS == T &', command)]
+  command = rep(c(rev_command, rev_command, entry_command),each = 4), quartile_num = rep(1:4,3),
+  intensive_margin = rep(c(F, T, F), each=4)) %>% rowwise() %>%
+  mutate( command = gsub('firm_yr', paste0('firm_yr[log_dom_turnover_bar_quartile==', quartile_num,"]"), command)) %>%
+  as.data.table() %>%
+  .[intensive_margin ==T, command:=gsub('firm_yr\\[', 'firm_yr[currently_export_BS == T &', command)]
+
 
 interaction_regs = data.table(
   command = rep(c(int_rev_command, int_entry_command), each = length(interactions)),
   interaction_var = rep(interactions,2)) %>% rowwise() %>% 
   mutate(command = gsub('interaction', interaction_var, command))
 
-variations = rbindlist(list(baseline_regs, size_quartile_regs, interaction_regs), fill = T, use.names = T) %>% 
-  bind_rows(mutate(., command = gsub('BS', 'customs',command))) %>% mutate(version = if_else(grepl('BS', command), 'BS', 'customs'))
+variations = rbindlist(list(baseline_regs, size_quartile_regs, interaction_regs), fill = T, use.names = T) %>%
+  bind_rows(mutate(., command = gsub('BS', 'customs', command))) %>% mutate(version = if_else(grepl('BS', command), 'BS', 'customs'))
 
 if (!dummy_version){  
   model_output = evaluate_variations(variations)
   if(nrow(model_output$failed_output)!= 0) print('CHECK WHAT WENT WRONG')
   write_rds(model_output, paste0(raw_output_dir, '2c_firm_yr_supp_variations.rds'))
 }
+
 
 
 

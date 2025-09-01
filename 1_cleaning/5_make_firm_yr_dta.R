@@ -46,9 +46,9 @@ uncertainty_dta = import_file(raw_bs_br_path,col_select = c('firmid_num', 'year'
   .[ firmid_num %in% linkedin_firm_yr$firmid_num] %>% 
   .[, `:=`(log_dom_turnover = asinh(dom_turnover), log_labor_cost = asinh(labor_cost), log_capital = asinh(capital))] %>% 
   merge(import_file(firm_lvl_birth_path, col_select = c('firmid_num', 'birth_year')), by = 'firmid_num') %>% 
-  .[year >= birth_year, log_age := asinh(year -birth_year)] %>% 
-  unbalanced_lag(., 'firmid_num', 'year','dom_turnover', 1:3) %>% 
-  .[, log_dom_turnover_prior3 := asinh(rowMeans(.SD, na.rm = TRUE)), .SDcols = paste0('dom_turnover_lag',1:3)]
+  .[year >= birth_year, log_age := asinh(year -birth_year)] %>%
+  unbalanced_lag(., 'firmid_num', 'year', 'dom_turnover', 1:3) %>%
+  .[, log_dom_turnover_prior3 := asinh(rowMeans(.SD, na.rm = T)), .SDcols=paste0('dom_turnover_lag', 1:3)]
 
 ## run initial regression 
 forecast_model = feols(uncertainty_dta, log_dom_turnover ~ log_labor_cost + log_capital + log_age| firmid_num + year)
@@ -157,25 +157,34 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
   # Create capital intensity as capital to total revenue
   output[, capital_intensity:=ifelse(turnover==0, NA, log(capital/(turnover)))]
   
-  ### ADD IN THE PRIOR UNCERTAINTY VALUES 
-  output = merge(output, import_file(uncertainty_proxy_path), all.x = T, by = c('firmid_num','year'))
+  ### ADD IN THE PRIOR UNCERTAINTY VALUES
+  output = merge(output, import_file(uncertainty_proxy_path), all.x=T, by=c('firmid_num', 'year'))
   
   ## ADD SIZE VARIABLES 
   output = output[, log_dom_turnover_bar := asinh(NA_mean(dom_turnover)), by = firmid_num] %>% 
        .[, ever_data := any(comp_data >0), by = firmid_num] 
   
+  # bar_quartiles1 = output[, .SD[1], by = .(firmid_num, NACE_BR)] %>%
+  #  .[, log_dom_turnover_bar_quartile := ntile(log_dom_turnover_bar, 4)] %>%
+  #  .[, log_dom_turnover_bar_quartile_nace := ntile(log_dom_turnover_bar, 4), by = NACE_BR] %>%
+  #  .[ever_data== T, log_dom_turnover_bar_quartile_ever_data :=  ntile(log_dom_turnover_bar, 4)] %>%
+  #   select(con_fil(., 'bar_quartile', 'firmid_num', 'NACE_BR'))
+  
+  output$firmid_num<-as.numeric(output$firmid_num)
+  
   bar_quartiles = output[!is.na(NACE_BR), count_nace_obs := .N, by = .(firmid_num, NACE_BR)] %>%
-    arrange(-count_nace_obs) %>% .[, .SD[1], by = .(firmid_num)] %>% 
-   .[, log_dom_turnover_bar_quartile := ntile(log_dom_turnover_bar, 4)] %>% 
-   .[!is.na(NACE_BR), log_dom_turnover_bar_quartile_nace := ntile(log_dom_turnover_bar, 4), by = NACE_BR] %>% 
-   .[ever_data== T, log_dom_turnover_bar_quartile_ever_data :=  ntile(log_dom_turnover_bar, 4)] %>% 
+    arrange(-count_nace_obs) %>% .[, .SD[1], by=.(firmid_num)] %>% 
+    .[, log_dom_turnover_bar_quartile := ntile(log_dom_turnover_bar, 4)] %>% 
+    .[!is.na(NACE_BR), log_dom_turnover_bar_quartile_nace := ntile(log_dom_turnover_bar, 4), by = NACE_BR] %>% 
+    .[ever_data== T, log_dom_turnover_bar_quartile_ever_data :=  ntile(log_dom_turnover_bar, 4)] %>% 
     select(con_fil(., 'bar_quartile', 'firmid_num')) 
-
+  output$firmid_num<-as.numeric(output$firmid_num)
+  
+  bar_quartiles[, count:=.N, by=firmid_num]
+  table(bar_quartiles$count)
+  
   output = merge(output, bar_quartiles, all.x = T, by = 'firmid_num')
-  
 
-  
-  
 write_parquet(output,firm_yr_path)
 rm(list= setdiff(ls(), c(base_env))); gc()
 # generate unmatched input for summary stats ------------------------------
