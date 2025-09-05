@@ -38,7 +38,7 @@ log_grav_dist, log gravity distance, F
 either_grav_region, extended grav. region, T
 either_grav_border, extended grav. border, T
 either_grav_language, either gravity language, T
-either_grav_dist, extended grav. distance , T,
+either_grav_dist, extended grav. distance , T
 log_either_grav_dist,log extended grav. distance, T
 ctry_pop_among_exporters, country popularity, T
 ctry_log_variance_group_lvl, country-level total export variance, F
@@ -48,7 +48,9 @@ ctry_detrended_var, country-level detrended export variance, F
 ctry_churn_rate_yr_to_yr, country-year-level exporter churn rate, T
 ctry_churn_rate, country-level exporter churn rate, F
 ctry_immediate_failure_rate_yr_to_yr, country-year-level export failure rate, T
-ctry_immediate_failure_rate, country-level export failure rate, F") %>% mutate(time_varying = as.booltype(time_varying))
+ctry_immediate_failure_rate, country-level export failure rate, F
+network_closeness_inc_france, log avg distance to export markets, T
+network_closeness_excl_france, log avg distance to export markets, T") %>% mutate(time_varying = as.booltype(time_varying))
 
 
 firm_yr_ctry = import_file(firm_yr_ctry_path) %>% 

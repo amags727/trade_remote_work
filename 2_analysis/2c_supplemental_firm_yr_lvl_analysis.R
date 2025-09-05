@@ -46,7 +46,8 @@ for (command_type in c('rev','entry','death','detrended_var','unq_prods')){
 
 interactions = c('log_years_since_first_export_year_BS', 'log_export_streak_age_BS', 'log_age', 
                  'for_to_dom_rev_ratio_BS_init','log_num_mkts',  'log_num_mkts_init','log_dom_turnover', 'log_dom_turnover_init', 'log_empl', 'log_empl_init',
-                 'log_comp_non_data_rnd', 'nace_HHI_dom', 'nace_share_dom', 'nace_share_dom_init')
+                 'log_comp_non_data_rnd', 'nace_HHI_dom', 'nace_share_dom', 'nace_share_dom_init',
+                 gpaste('network_closeness_', c('inc', 'excl'), "_france_",  c('inc', 'excl'), "_self"))
 
 restrictions = fread("underlying, discrete_var, string
       years_since_first_export_year_BS, years_since_first_export_year_BS_bracket, T
@@ -85,7 +86,8 @@ extra_control_variations = base_variations %>% mutate(
 interaction_variations = data.table(dep_var = rep(c('rev','entry','death','detrended_var', 'unq_prods'), each = length(interactions)),
                                     interaction_var = rep(interactions, 5))  %>% rowwise() %>% 
   mutate(command = gsub('interaction', interaction_var, get(paste0('int_',dep_var, "_command")))) %>% as.data.table() %>% 
-.[!(dep_var == 'entry' & (interaction_var %in% c('log_export_streak_age_BS', 'log_num_mkts')))]
+.[!(dep_var == 'entry' & (interaction_var %in% c('log_export_streak_age_BS', 'log_num_mkts')))] %>% 
+.[grepl('network_closeness', interaction_var), command := gsub('avg_prestige_total', 'avg_prestige_total+ log_num_markets', command)]
 
 ### ADD RESTRICTIONS 
 restriction_variations = data.table(dep_var = rep(c('rev','entry','death','detrended_var', 'unq_prods'),each = nrow(restrictions))) %>%
@@ -107,6 +109,10 @@ if (!dummy_version){
       select(counter, regressor, p_val, con_fil(., names(variations)), everything()))
 }
 
+
+# review results  ---------------------------------------------------------
+output = import_file(de_dummy(raw_output_dir),  '2c_firm_yr_supp_variations.rds')
+for(name in names(output)) assign(name, output[[name]])
 
 # generate output tables -----------------------------------------------------------------------
 # reg_output = import_file(de_dummy(raw_output_dir), '2c_firm_yr_supp_variations.rds')

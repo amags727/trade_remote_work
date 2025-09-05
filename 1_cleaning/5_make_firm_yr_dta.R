@@ -14,8 +14,9 @@ if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list 
 }
 
 source('2) code/0_set_parameter_values.R')
-# import component datasets --------------------------------------------------------
 
+
+# import component datasets --------------------------------------------------------
 ### ADD IN THE AGE DATA 
 age_vars =  c('birth_year', gpaste('first_export_year_', c('customs', 'BS')),'last_observed', 'firmid_num')
 age_data = import_file(firm_lvl_birth_path, col_select = age_vars)
@@ -49,6 +50,20 @@ export_product_counts = import_file(raw_customs_product_lvl_path, col_select = c
   distinct(year, firmid_num, CN8plus) %>% 
   .[, .(num_unique_export_products = .N), by = .(firmid_num, year)]
 
+network_closeness = import_file(raw_customs_firm_lvl_path, col_select = c(export_vars,'ctry_num')) %>%
+  .[exim == 2 & year %in% year_range] %>% 
+  rbind(bs_data[!is.na(dom_turnover), c('firmid_num', 'year', 'dom_turnover')] %>% rename(value = dom_turnover) %>% .[,ctry_num := 0], fill = T) %>% 
+  .[, currently_exporting := any(ctry_num !=0), by = .(firmid_num, year)] %>% .[currently_exporting == T] %>% .[,currently_exporting := NULL] %>%
+  merge(.[,c('ctry_num', 'firmid_num', 'year', 'value')] %>% rename(d_ctry_num =  ctry_num, d_value = value), by = c('firmid_num', 'year'), allow.cartesian = T) %>%
+  rename(o_ctry_num = ctry_num) %>% .[,value := value * d_value] %>% 
+  .[,`:=`(not_france = o_ctry_num != 0 & d_ctry_num != 0, not_self = o_ctry_num  != d_ctry_num)] %>% 
+  merge(import_file(similiarity_dir, '/outputs/overall_distance_data.csv'), by = con_fil(.,'ctry')) %>% 
+  .[!is.na(distance_km)] %>% 
+  .[,.(network_closeness_inc_france_inc_self = weighted.mean(distance_km, value),
+       network_closeness_excl_france_inc_self = weighted.mean(distance_km[not_france], value[not_france]),
+       network_closeness_inc_france_excl_self = weighted.mean(distance_km[not_self], value[not_self]),
+       network_closeness_excl_france_excl_self = weighted.mean(distance_km[not_self & not_france], value[not_self & not_france])), by = .(firmid_num, year)] %>% 
+  .[, con_fil(., 'network') := lapply(.SD, asinh), .SDcols = con_fil(., 'network')]
 
 # prepare output  ---------------------------------------------------------
 suffixes = c('customs', 'BS')
@@ -69,6 +84,7 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
   ## merge in / process export data 
   merge(export_data, all.x = T,  by = c('firmid_num', 'year')) %>% 
   merge(export_product_counts, all.x =T , by = c('firmid_num', 'year')) %>% 
+  merge(network_closeness,all.x = T, by = c('firmid_num', 'year')) %>% 
   .[, (paste0(vars_to_cond, '_cond')) := lapply(.SD, function(x) ifelse(x == 0, NA, x)), .SDcols =vars_to_cond] %>%
   .[, (vars_to_cond) := lapply(.SD, function(x) replace_na(x, 0)), .SDcols =vars_to_cond] %>% 
   .[, (paste0('currently_export_', c('customs', 'BS'))) := lapply(c('customs', 'BS'), function(x) get(paste0('total_export_rev_',x))>0)] %>% 

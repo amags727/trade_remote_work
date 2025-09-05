@@ -72,11 +72,28 @@ if (making_extended_grav){
 }
 
 # import files  --------------------------------------------------------
-extended_grav = import_file(extended_grav_path) 
+network_closeness = import_file(extended_grav_path, col_select = c('ctry_num','firmid_num','year', 'export_rev_customs')) %>%
+  
+  ## add domestic revenue 
+  rbind(import_file(firm_yr_path, col_select = c('dom_turnover', 'firmid_num', 'year')) %>% .[dom_turnover > 0] %>%
+          rename(export_rev_customs =dom_turnover) %>% .[,ctry_num := 0])  %>%
+  
+  ## for each firm-destination-year add all the other destinations the firm has in network 
+  merge(.[export_rev_customs > 0] %>% rename(d_ctry_num = ctry_num, d_export_rev_customs = export_rev_customs) %>%
+          .[,c('firmid_num', 'year', 'd_ctry_num', 'd_export_rev_customs')], by = c('firmid_num', 'year'), allow.cartesian = T) %>% 
+  rename(o_ctry_num = ctry_num) %>% .[o_ctry_num != d_ctry_num & o_ctry_num != 0] %>% 
+  
+  ## merge in distance data and calc weighted mean 
+  merge(import_file(similiarity_dir, '/outputs/overall_distance_data.csv'), by = con_fil(.,'ctry')) %>% 
+  .[,france := d_ctry_num == 0 ] %>% 
+  .[, .(network_closeness_inc_france = asinh(weighted.mean(distance_km, d_export_rev_customs)),
+        network_closeness_excl_franc = asinh(weighted.mean(distance_km[!france], d_export_rev_customs[!france]))),  by = .(o_ctry_num,firmid_num, year)] %>% 
+  rename(ctry_num =o_ctry_num)
 
+extended_grav = import_file(extended_grav_path)
 vars_to_any = gpaste(c('currently_export', 'nace_share_export', 'is_first_export_year','log_years_since_first_export_year'),'_customs')
 firm_yr = import_file(firm_yr_path) %>% rename_with(.cols = vars_to_any, ~paste0(., '_any_ctry')) %>% 
-  select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total', 'empl', 'empl_bin',
+  select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total', 'empl', 'empl_bin', 'young',
            'share_empl_college', 'use_data','use_data_lag1','num_mkts', 'last_observed',"capital_intensity",
            con_fil(con_fil(., 'log', 'nace_comp_data_quartile', 'any_ctry'), 'BS', 'detrended', inc =F))) %>%
   .[,firmid_year_num := as.numeric(as.factor(paste0(firmid_num,"_", year)))] %>% 
@@ -90,6 +107,7 @@ customs_age_data = import_file(firm_ctry_lvl_birth_path, col_select = c('firmid_
 # merge clean and output ------------------------------------------------
 vars_to_log = c('export_rev_customs', 'num_other_mkts', 'years_since_first_export_year', 'years_since_streak_start')
 output = merge(firm_yr, extended_grav, by = c('firmid_num', 'year')) %>% 
+  merge(network_closeness, all.x = T, by = c('firmid_num', 'year')) %>% 
   
   ## add age data 
   merge(age_data, by = c('firmid_num')) %>% 
