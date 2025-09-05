@@ -70,7 +70,7 @@ model_to_df = function(model, is_cox){
       year =  as.numeric(str_extract(regressor, '\\d{4}')),
       coef = as.numeric(model$coefficients),
       se = as.numeric(summary(model)$se), 
-      p_val = round(summary(model)$coeftable[, "Pr(>|t|)"],3),
+      p_val = round(summary(model)$coeftable %>% as.data.frame() %>% rename_with(~gsub('z','t',.)) %>%  .[, "Pr(>|t|)"],3),
       lb = coef - 1.96*se, ub = coef + 1.96*se)
   }else{
     output = data.frame(regressor = rownames(model$coefficients)) %>% mutate(

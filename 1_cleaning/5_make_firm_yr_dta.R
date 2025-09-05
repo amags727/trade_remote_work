@@ -15,89 +15,46 @@ if(exists('base_env')){rm(list= setdiff(ls(), base_env))}else{rm(list = rm(list 
 
 source('2) code/0_set_parameter_values.R')
 # import component datasets --------------------------------------------------------
+
+### ADD IN THE AGE DATA 
 age_vars =  c('birth_year', gpaste('first_export_year_', c('customs', 'BS')),'last_observed', 'firmid_num')
 age_data = import_file(firm_lvl_birth_path, col_select = age_vars)
-
-
-linkedin_firm_yr = import_file(linkedin_firm_yr_path) 
-
-bs_vars = c('firmid_num', 'year','dom_turnover', 'empl', 'capital', 'intangible_fixed_assets','for_turnover', 'labor_cost','turnover')
-bs_data = import_file(raw_bs_br_path,col_select = bs_vars) %>% 
-  rename(total_export_rev_BS = for_turnover) %>%
-  .[year %in% year_range & firmid_num %in% linkedin_firm_yr$firmid_num]
-
 firm_lvl_streak_info = import_file(firm_lvl_export_birth_path)
+
+### ADD IN THE LINKEDIN DATA 
+NACE_2d_info = if(!dummy_version){import_file("1) Data/0_misc_data/0a_nace_2d_industry_categories.csv")}else{data.table(NACE_2d = 0:5, industry_category = letters[1:6])}
+linkedin_firm_yr = import_file(linkedin_firm_yr_path) %>% 
+  .[, NACE_2d := as.integer(substr(as.character(str_pad(NACE_BR, 4, side="left", pad="0")), 1, 2))] %>% 
+  merge(NACE_2d_info, all.x = T)
+
+### ADD IN THE BUSINESS SURVEY DATA
+bs_vars = c('firmid_num', 'year','dom_turnover', 'empl', 'capital', 'intangible_fixed_assets','for_turnover', 'labor_cost','turnover', 'NACE_BR')
+bs_data = import_file(raw_bs_br_path,col_select = bs_vars) %>% 
+  rename(total_export_rev_BS = for_turnover) %>% 
+  .[, nace_share_dom := dom_turnover / NA_sum(dom_turnover), by = .(NACE_BR, year)] %>% 
+  .[, nace_leader_dom := dom_turnover > quantile(dom_turnover, 0.99, na.rm = TRUE), by = .(NACE_BR, year)] %>% 
+  .[, nace_HHI_dom := NA_sum(nace_share_dom^2), by = .(NACE_BR, year)]  %>% .[,NACE_BR := NULL] %>% 
+  .[year %in% year_range & firmid_num %in% linkedin_firm_yr$firmid_num] %>% 
+  .[, empl_bin := case_when(is.na(empl) ~NA_character_, empl < 50 ~ 'small', empl < 200 ~'medium', T ~ 'large')] 
+
+
+### ADD IN THE CUSTOMS DATA 
 export_vars = c('firmid_num', 'year', 'exim', 'value','products')
 export_data = import_file(raw_customs_firm_lvl_path, col_select = export_vars) %>%
   .[exim == 2 & year %in% year_range] %>% .[,exim := NULL] %>%
   .[,.(num_mkts = .N, total_export_rev_customs = sum(value, na.rm = T), products_per_ctry = NA_mean(products)), by = .(firmid_num, year)]
 
-NACE_2d_info = if(!dummy_version){ 
-  import_file("1) Data/0_misc_data/0a_nace_2d_industry_categories.csv")}else{
-    data.table(NACE_2d = 0:5, industry_category = letters[1:6]) 
-  }
+export_product_counts = import_file(raw_customs_product_lvl_path, col_select = c('year', 'exim', 'CN8plus', 'firmid_num')) %>%
+  .[exim == 2 & year %in% year_range & firmid_num %in% linkedin_firm_yr$firmid_num] %>% 
+  distinct(year, firmid_num, CN8plus) %>% 
+  .[, .(num_unique_export_products = .N), by = .(firmid_num, year)]
 
-
-# generate the uncertainty proxy -----------------------------------------------------------------------
-making_uncertainty_proxy = T
-if (making_uncertainty_proxy){
-# import data 
-uncertainty_dta = import_file(raw_bs_br_path,col_select = c('firmid_num', 'year', 'dom_turnover', 'labor_cost', 'capital')) %>% 
-  .[ firmid_num %in% linkedin_firm_yr$firmid_num] %>% 
-  .[, `:=`(log_dom_turnover = asinh(dom_turnover), log_labor_cost = asinh(labor_cost), log_capital = asinh(capital))] %>% 
-  merge(import_file(firm_lvl_birth_path, col_select = c('firmid_num', 'birth_year')), by = 'firmid_num') %>% 
-  .[year >= birth_year, log_age := asinh(year -birth_year)] %>%
-  unbalanced_lag(., 'firmid_num', 'year', 'dom_turnover', 1:3) %>%
-  .[, log_dom_turnover_prior3 := asinh(rowMeans(.SD, na.rm = T)), .SDcols=paste0('dom_turnover_lag', 1:3)]
-
-## run initial regression 
-forecast_model = feols(uncertainty_dta, log_dom_turnover ~ log_labor_cost + log_capital + log_age| firmid_num + year)
-non_dropped_obs = setdiff(1:nrow(uncertainty_dta),-1*forecast_model$obs_selection$obsRemoved)
-
-uncertainty_dta = uncertainty_dta[non_dropped_obs, forecast_resid := forecast_model$residuals] %>% 
-  unbalanced_lag(.,'firmid_num', 'year', 'forecast_resid', 1) %>%
-  .[, complete_info := !is.na(forecast_resid) & !is.na(forecast_resid_lag1)]
-
-ar1 = uncertainty_dta[complete_info == T, .(rho_hat = if (.N >= 3) coef(lm(forecast_resid ~ 0 + forecast_resid_lag1))[[1]] else NA_real_,
-                          Tobs = .N),by = firmid_num]
-
-# global mean rho (precision-weighted)
-rho_bar <- with(ar1[!is.na(rho_hat)], weighted.mean(rho_hat, pmax(Tobs - 2, 1)))
-
-# simple shrinkage toward rho_bar
-ar1[, lambda := pmin(1, Tobs/8)]
-ar1[, rho_shrunk := ifelse(is.na(rho_hat), rho_bar, lambda*rho_hat + (1-lambda)*rho_bar)]
-uncertainty_dta = merge(ar1, uncertainty_dta, by= 'firmid_num') %>% 
-  .[is.na(rho_shrunk), rho_shrunk := rho_bar] %>%  
-  .[,forecast_resid_AR1 := rho_shrunk * forecast_resid_lag1] %>%
-  .[,eps_AR1 := forecast_resid - forecast_resid_AR1] %>% 
-  unbalanced_lag(., 'firmid_num', 'year', 'eps_AR1', 1:5) %>% 
-  .[, residual_var_prior5 := apply(.SD, 1, var, na.rm = TRUE), .SDcols = paste0('eps_AR1_lag', 1:5)] %>% 
-  .[, residual_var_prior5_strict := apply(.SD, 1, var), .SDcols = paste0('eps_AR1_lag', 1:5)] %>% 
-  .[, residual_var_prior3 := apply(.SD, 1, var, na.rm = TRUE), .SDcols = paste0('eps_AR1_lag', 1:3)] %>% 
-  .[, residual_var_prior3_strict := apply(.SD, 1, var), .SDcols = paste0('eps_AR1_lag', 1:3)] %>% 
-  select('firmid_num', 'year', con_fil(.,'residual_var_prior'), 'log_dom_turnover_prior3')
-
-write_parquet(uncertainty_dta, uncertainty_proxy_path)
-}
 
 # prepare output  ---------------------------------------------------------
 suffixes = c('customs', 'BS')
-vars_to_cond = c('num_mkts', 'products_per_ctry', gpaste('total_export_rev_' ,suffixes))
-vars_to_log = c('age', 'dom_turnover',  gpaste("total_export_rev_",suffixes, c('', '_cond')),
+vars_to_cond = c('num_unique_export_products','num_mkts', 'products_per_ctry', gpaste('total_export_rev_' ,suffixes))
+vars_to_log = c('age', 'dom_turnover','num_mkts','empl',  gpaste("total_export_rev_",suffixes, c('', '_cond')),
                 gpaste(c('export_streak_age', 'years_since_first_export_year'), "_",suffixes))
-
-## add employee bins 
-bin_boundaries = c(0,50, 100, 200, 500, 1000, Inf); num_bins = length(bin_boundaries) -1
-bin_labels = rep('', num_bins); for (i in 1:num_bins) bin_labels[i] = paste0(bin_boundaries[i],'-', bin_boundaries[i+1])
-bin_labels[num_bins] = paste0(bin_boundaries[num_bins], '+')
-bs_data = bs_data %>% arrange(empl) %>% mutate(bs_data, 
-  empl_bin = cut(empl, breaks = bin_boundaries,labels = bin_labels, include.lowest =T, right = T))
-
-## add nace_2d info 
-linkedin_firm_yr = linkedin_firm_yr %>% 
-  .[, NACE_2d := as.integer(substr(as.character(str_pad(NACE_BR, 4, side="left", pad="0")), 1, 2))] %>% 
-  merge(NACE_2d_info, all.x = T)
 
 
 output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>% 
@@ -106,11 +63,12 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
   .[, age := year - birth_year] %>% remove_if_NA('age') %>% 
   .[, (paste0("years_since_first_export_year_", suffixes)) := lapply(suffixes, function(x) ifelse(year <get(paste0('first_export_year_', x)), NA, year -get(paste0('first_export_year_', x))))] %>% 
   .[, (paste0("is_first_export_year_", suffixes)) := lapply(suffixes, function(x) year == get(paste0('first_export_year_', x)))] %>% 
-  .[, `:=`(age_bracket = as.factor(case_when(age <= 5 ~ 1, age <= 10 ~2, age <= 20 ~3, T ~4)), young = age <=5)]  %>% 
+  .[, `:=`(age_bracket = case_when(age <= 5 ~ "<= 5", age <= 10 ~ "6-10", age <= 20 ~ "11-20", T ~'20+'), young = age <=5)]  %>% 
   
   
-  ## merge in process export data 
+  ## merge in / process export data 
   merge(export_data, all.x = T,  by = c('firmid_num', 'year')) %>% 
+  merge(export_product_counts, all.x =T , by = c('firmid_num', 'year')) %>% 
   .[, (paste0(vars_to_cond, '_cond')) := lapply(.SD, function(x) ifelse(x == 0, NA, x)), .SDcols =vars_to_cond] %>%
   .[, (vars_to_cond) := lapply(.SD, function(x) replace_na(x, 0)), .SDcols =vars_to_cond] %>% 
   .[, (paste0('currently_export_', c('customs', 'BS'))) := lapply(c('customs', 'BS'), function(x) get(paste0('total_export_rev_',x))>0)] %>% 
@@ -147,48 +105,41 @@ output = merge(bs_data, linkedin_firm_yr, by = c('firmid_num', 'year')) %>%
       }
   }
   }
+
   ## add size adjusted comp data (metric for how unusual data comp is for a firm of that size)
   model = feols(data = output, log_comp_data ~ asinh(turnover) + I(asinh(turnover)^2))
   non_dropped_obs =  setdiff(1:nrow(output),-1*model$obs_selection$obsRemoved)
   output[non_dropped_obs, size_adjusted_comp_data := model$residuals] 
   
   ## add in lags for overall exporter behavior 
-  output = output %>% unbalanced_lag(., 'firmid_num', 'year',con_fil(., 'share_export'), 1)
+  output = output %>% unbalanced_lag(., 'firmid_num', 'year',con_fil(., 'share_export'), 1) %>% 
+  
   # Create capital intensity as capital to total revenue
-  output[, capital_intensity:=ifelse(turnover==0, NA, log(capital/(turnover)))]
+  .[, capital_intensity:=ifelse(turnover==0, NA, log(capital/(turnover)))] %>% 
   
-  ### ADD IN THE PRIOR UNCERTAINTY VALUES
-  output = merge(output, import_file(uncertainty_proxy_path), all.x=T, by=c('firmid_num', 'year'))
-  
-  ## ADD SIZE VARIABLES 
-  output = output[, log_dom_turnover_bar := asinh(NA_mean(dom_turnover)), by = firmid_num] %>% 
-       .[, ever_data := any(comp_data >0), by = firmid_num] 
-  
-  # bar_quartiles1 = output[, .SD[1], by = .(firmid_num, NACE_BR)] %>%
-  #  .[, log_dom_turnover_bar_quartile := ntile(log_dom_turnover_bar, 4)] %>%
-  #  .[, log_dom_turnover_bar_quartile_nace := ntile(log_dom_turnover_bar, 4), by = NACE_BR] %>%
-  #  .[ever_data== T, log_dom_turnover_bar_quartile_ever_data :=  ntile(log_dom_turnover_bar, 4)] %>%
-  #   select(con_fil(., 'bar_quartile', 'firmid_num', 'NACE_BR'))
-  
-  output$firmid_num<-as.numeric(output$firmid_num)
-  
-  bar_quartiles = output[!is.na(NACE_BR), count_nace_obs := .N, by = .(firmid_num, NACE_BR)] %>%
-    arrange(-count_nace_obs) %>% .[, .SD[1], by=.(firmid_num)] %>% 
-    .[, log_dom_turnover_bar_quartile := ntile(log_dom_turnover_bar, 4)] %>% 
-    .[!is.na(NACE_BR), log_dom_turnover_bar_quartile_nace := ntile(log_dom_turnover_bar, 4), by = NACE_BR] %>% 
-    .[ever_data== T, log_dom_turnover_bar_quartile_ever_data :=  ntile(log_dom_turnover_bar, 4)] %>% 
-    select(con_fil(., 'bar_quartile', 'firmid_num')) 
-  output$firmid_num<-as.numeric(output$firmid_num)
-  
-  bar_quartiles[, count:=.N, by=firmid_num]
-  table(bar_quartiles$count)
-  
-  output = merge(output, bar_quartiles, all.x = T, by = 'firmid_num')
 
+  ## gen brackets based on time since starting to export / time in the current export streak 
+  mutate(across(gpaste(c('export_streak_age_','years_since_first_export_year_'), suffixes), ~ case_when(
+    is.na(.) ~ NA_character_, . < 2 ~ '0-1', . < 5 ~ '2-4', T ~ '5+'), .names = '{col}_bracket')) %>% 
+  
+  ### generate domestic size quartile 
+  .[, dom_turnover_quartile := ntile(dom_turnover, 4), by = .(year)]
+
+  ## generate variables based on the initial condition of the firm
+  init_vars = c('for_to_dom_rev_ratio_BS', 'for_to_dom_rev_ratio_customs', 'num_mkts_bracket',
+                'log_num_mkts', 'log_dom_turnover', 'dom_turnover_quartile','log_empl', 'empl_bin', 'nace_share_dom')
+  setorder(output,firmid_num, year)
+  output = output[dom_turnover != 0, `:=`(for_to_dom_rev_ratio_BS =  total_export_rev_BS/ dom_turnover, 
+                                 for_to_dom_rev_ratio_customs = total_export_rev_customs / dom_turnover)] %>% 
+  .[, num_mkts_bracket := lapply(.SD, function(x) case_when(is.na(x) ~ NA_character_, x == 0 ~ '0', x < 5 ~ '1-5', T ~ '5+')), .SDcols = 'num_mkts'] %>% 
+  .[, paste0(init_vars, '_init') := lapply(.SD, function(x) na.omit(x)[1]), by = firmid_num, .SDcols = init_vars] 
+
+## EXPORT FILE   
 write_parquet(output,firm_yr_path)
+  
+  
 rm(list= setdiff(ls(), c(base_env))); gc()
 # generate unmatched input for summary stats ------------------------------
-
 #### 
 #import data
 ####
@@ -231,5 +182,12 @@ output = rbindlist(list(output,firm_yr_linkedin), use.names = T, fill = T)[, in_
 write_parquet(output, firm_yr_summary_stats_path)
 # cleanup -----------------------------------------------------------------
 rm(list= setdiff(ls(), c(base_env))); gc()
+
+
+
+
+
+
+
 
 
