@@ -22,7 +22,7 @@ linkedin_input_dir = '1) data/7_revelio_data/b_processed_data/linkedin/'
 linkedin_output_dir = '1) data/7_revelio_data/c_final_outputs/'
 # import data -------------------------------------------------------------
 city_location = import_file('1) data/7_revelio_data/b_processed_data/linkedin/linkedin_city_coords.parquet')
-role_dict = import_file(linkedin_input_dir,'revelio_role_dict.csv', col_select = c('role_k1500', 'total', 'data', 'data_analyst', 'non_data_rnd'))
+role_dict = import_file(linkedin_input_dir,'revelio_role_dict.csv', col_select = c('role_k1500', 'total', 'data', 'data_analyst', 'non_data_rnd', 'stem'))
 firm_lvl_dta = import_file(linkedin_input_dir, 'firm_lvl_info_all_matched_firms.parquet') %>% numeric_firmid()
 prestige_dta = import_file(paste0(linkedin_input_dir, 'matched_firm_user_prestige.parquet')) %>% 
   .[!is.na(highest_degree),college := highest_degree %in% c('Master', 'Bachelor', 'MBA', 'Doctor')] %>%
@@ -122,6 +122,7 @@ firm_lvl_output = rbindlist(lapply(year_range, function(year){
     .[, .(empl_total = NA_sum(weight), comp_total = NA_sum(comp)*1e-3,
           empl_data = NA_sum(weight*data), comp_data = NA_sum(comp*data)*1e-3,
           empl_non_data_rnd = NA_sum(weight*non_data_rnd), comp_non_data_rnd = NA_sum(comp*non_data_rnd)*1e-3,
+          empl_stem = NA_sum(weight*stem), comp_stem = NA_sum(comp*stem)*1e-3,
           share_comp_data = NA_sum(comp*data)/ NA_sum(comp), 
           share_data_empl_analyst = NA_sum(weight*data_analyst)/ NA_sum(weight*data),
           avg_prestige_total = NA_mean(prestige),
@@ -130,6 +131,7 @@ firm_lvl_output = rbindlist(lapply(year_range, function(year){
             use_data = empl_data >0,
             log_comp_data = asinh(comp_data),
             log_comp_non_data_rnd = asinh(comp_non_data_rnd),
+            log_stem = asinh(comp_stem),
             log_comp_total = asinh(comp_total))]
 })) # %>% 
   # merge(hq_NUTS, all.x =T, by = 'firmid_num') %>% 
@@ -190,7 +192,7 @@ firm_lvl_output = firm_lvl_output %>%
   .[comp_data > 0, nace_comp_data_quartile := ntile(comp_data,4), by = c('NACE_BR', 'year')] %>% 
   .[comp_non_data_rnd == 0, nace_comp_non_data_rnd_quartile := 0] %>% 
   .[comp_non_data_rnd > 0,  nace_comp_non_data_rnd_quartile := ntile(comp_non_data_rnd,4), by = c('NACE_BR', 'year')] %>% 
-  unbalanced_lag(.,'firmid_num', 'year',c('log_comp_total', con_fil(., 'data','grad')), 1,expand = T,birth_var = 'birth_year') %>% 
+  unbalanced_lag(.,'firmid_num', 'year',c('log_comp_total', con_fil(., 'data','stem', 'grad')), 1,expand = T,birth_var = 'birth_year') %>% 
   .[,`:=`(empl_data_delta = empl_data - empl_data_lag1,
           share_comp_data_delta = share_comp_data - share_comp_data_lag1)] %>%
   select(-c(birth_year,empl))
