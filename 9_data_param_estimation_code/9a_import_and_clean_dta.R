@@ -53,7 +53,7 @@ SELECT f.item7011 as wrds_empl, c.item6038 AS ibes_ticker,c.item6008 AS isin, f.
   .[is.na(fiscal_year_enddate), fiscal_year_enddate := as.Date(paste0(fiscal_year, '-12-31'))] %>% 
   .[, fiscal_year_startdate := fiscal_year_enddate %m-% years(1) + days(1)] %>%  
   .[,forecast_window := as.numeric(difftime(fiscal_year_enddate,anndats , units = "days")) / 365.25] %>% 
-  .[, birth_year := ifelse(is.na(birth_date), year(birth_date), year(incorporation_date))] %>% 
+  .[, birth_year := ifelse(!is.na(birth_date), year(birth_date), year(incorporation_date))] %>% 
   .[, age := fiscal_year - birth_year] %>% 
   .[!is.na(isin)] %>% 
   .[order(-val_1), .SD[1], by = .(isin, fiscal_year)] # drop duplicates in isin / fiscal year with priority going to non-blank value 1 (50 obs)
@@ -106,6 +106,7 @@ for (i in 1:length(isins_list)){
   # export the result
   write_parquet(temp, paste0('1) data/11_parameter_calibration/raw/temp/role_',i,'.parquet'))
 }
+
 file_list = list.files(path = '1) data/11_parameter_calibration/raw/temp', full.names = T)
 role_dta = rbindlist(lapply(file_list,import_file))
 write_parquet(role_dta,'1) data/11_parameter_calibration/raw/firm_role_dta.parquet') 

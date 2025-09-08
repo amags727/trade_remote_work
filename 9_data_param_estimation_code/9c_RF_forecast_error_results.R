@@ -24,8 +24,9 @@ dta = import_file('1) data/11_parameter_calibration/clean/combined_firm_dta.parq
   .[, abs_pct_fe_mean_prior3 := rowMeans(.SD, na.rm = TRUE), .SDcols = paste0('abs_pct_FE_tplus1_t_lag',1:3)] %>% 
   .[,paste0('abs_pct_FE_tplus1_t_lag',1:3) := NULL] %>% .[,log_age := asinh(age)] 
 
-feols(data = dta, log_abs_FE_tplus1_t~log_comp_data*log_x_bar + log_comp_total + share_empl_college + avg_prestige| isin + fiscal_year,cluster = ~isin)
-feols(data = dta, log_abs_FE_tplus1_t~log_comp_data*abs_pct_fe_mean_prior3 + log_comp_total + share_empl_college + avg_prestige| isin + fiscal_year,cluster = ~isin)
+
+feols(data = dta,  log_abs_FE_tplus1_t ~ log_comp_data*log_age + log_xt + log_abs_FE_t_tminus1 + log_comp_total| isin + fiscal_year, cluster = ~isin)
+
 
 
 

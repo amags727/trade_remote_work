@@ -145,13 +145,14 @@ output = dta %>% .[,.(isin,x_bar, fiscal_year,age, FE_tplus1_t,
   .[idx_FE == T, ll := ll]
 
 params$A_bar_calc =  NA_mean(dta$E_xtplus1_t / dta$x_bar + mu_a*(output$Sigma_tplus1_t + sig2_a))
-params$A_bar_nonneg_qual = Q_d / th2 + sig2_a
+params$A_bar_nonneg_qual = mu_a*(Sigma_ub+ sig2_a)
 params$theta = -log(theta_d); 
 params$Q = 2*Q_d*params$theta/ (1-th2)
+params$Sigma_ub = Sigma_ub
 return(list(output_df = output, output_params = params))
 }
 }                               
-obj <- function(eta) calc_log_likelihood(eta, 'calc' )
+obj <- function(eta) calc_log_likelihood(eta, 'calc')
 
 ## un-constrained version 
 # res_uc <- nloptr::nloptr(
