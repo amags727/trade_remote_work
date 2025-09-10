@@ -114,6 +114,30 @@ if (!dummy_version){
 output = import_file(de_dummy(raw_output_dir),  '2c_firm_yr_supp_variations.rds')
 for(name in names(output)) assign(name, output[[name]])
 
+
+
+young_old = model_output[variations %>% .[,idx := .I] %>% .[restriction_var == 'young' & dep_var != 'unq_prods'] %>% .[['idx']]]
+model_coef(young_old)
+coef_names = c(gpaste(c('', 'lagged '),'log payroll ', c('data', 'total'), order = 3:1),
+               gpaste('log dom. revenue', c('', ' sq')), 'empl. prestige', 'share empl. college grad', 'log firm age', "log capital intensity",
+               'log export\nstreak year')
+
+label = '2c_base_x_young_old'
+format_table(young_old, label = label,
+  coef_names = coef_names,
+  headers = make_headers(2, c('Log Export Rev', 'P(export)', 'P(stop exporting)', 'Log Detrended Export Var.')),
+  divisions_before = c(3,5,7),
+  custom_rows = list("", c('Age Group', rep(c('young', 'old'), 4))),
+  custom_row_placement = c(12,33),
+  rescale_factor = 1,
+  note_width = 1,
+  notes =  "Robust Standard Errors clustered at the firm level. All Regressions include firm and year FE. Young firms defined as those age 5 or under.",
+  output_path =  paste0(de_dummy(finished_output_dir), label, '.tex'), make_tex = F)
+
+
+
+
+
 # generate output tables -----------------------------------------------------------------------
 # reg_output = import_file(de_dummy(raw_output_dir), '2c_firm_yr_supp_variations.rds')
 # for (name in names(reg_output)){assign(name, reg_output[[name]])}

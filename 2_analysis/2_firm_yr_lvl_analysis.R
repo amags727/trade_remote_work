@@ -90,6 +90,7 @@ variations = rbindlist(list(baseline_rev, baseline_currently_export, baseline_de
          extensive_margin = grepl('use_data', command), 
          idx = 1:nrow(.)) %>% 
     select(idx,dep_var, version, restriction, fe, share_interaction, euro,extensive_margin, command)
+  
 if (!dummy_version){  
   model_output = evaluate_variations(variations)
   if(nrow(model_output$failed_output)!= 0) print('CHECK WHAT WENT WRONG')
