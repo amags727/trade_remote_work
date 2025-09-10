@@ -85,13 +85,11 @@ model_dta = import_file("1) data/11_parameter_calibration/clean/2_cleaned_financ
 feols(model_dta, detrended_var ~ log_parent_comp_data + log_parent_comp_total + 
         parent_share_empl_college  + parent_avg_prestige + log_age + log_compustat_capital | industry_group + fiscal_year, cluster = ~ ibes_ticker)
 
-
 feols(model_dta, log_compustat_rev ~ log_parent_comp_data + log_parent_comp_total + 
         parent_share_empl_college  + parent_avg_prestige + log_age + log_compustat_capital| industry_group + fiscal_year, cluster = ~ ibes_ticker)
 
 feols(model_dta, log_compustat_rev ~ log_parent_comp_data + log_parent_comp_total + 
         parent_share_empl_college  + parent_avg_prestige + log_age + log_compustat_capital + pct_firm_forecast_error| industry_group + fiscal_year, cluster = ~ ibes_ticker)
-
 
 feols(model_dta, detrended_var ~ log_parent_comp_data + log_parent_comp_total + 
         parent_share_empl_college  + parent_avg_prestige + log_age +log_compustat_capital | ibes_ticker + fiscal_year, cluster = ~ ibes_ticker)
