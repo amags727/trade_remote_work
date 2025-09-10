@@ -23,41 +23,52 @@ wrds_query= function(query_string){dbGetQuery(wrds, query_string) %>% data.table
 # import IBES data --------------------------------------------------------
 importing_IBES = F
 if (importing_IBES){
-#### FORECAST DATA 
-#https://wrds-www.wharton.upenn.edu/pages/get-data/lseg-ibes/ibes-guidance/detail-history/detail/
-IBES_forecast_data =  wrds_query("SELECT ticker AS ibes_ticker, measure, curr, units, anndats AS fcst_ann_date, prd_yr, prd_mon, val_1, val_2, 
+  #### FORECAST DATA 
+  #https://wrds-www.wharton.upenn.edu/pages/get-data/lseg-ibes/ibes-guidance/detail-history/detail/
+  IBES_forecast_data =  wrds_query("SELECT ticker AS ibes_ticker, measure, curr, units, anndats AS fcst_ann_date, prd_yr, prd_mon, val_1, val_2, 
                                  mean_at_date AS analyst_forecast_mean FROM ibes.det_guidance 
                                  WHERE pdicity = 'ANN' AND usfirm = 1 AND val_1 IS NOT NULL AND curr = 'USD' AND measure = 'SAL'") %>% 
+    
+    ## clean up how the forecast is reported 
+    .[,forecast := apply(.SD, 1, mean, na.rm = TRUE), .SDcols = c('val_1','val_2')] %>% 
+    .[!is.na(val_2), `:=`(forecast_lb = val_1, forecast_ub = val_2, forecast_range = val_2 - val_1)] %>% 
+    .[forecast_range < 0, paste0('forecast', c('', '_lb', '_ub', '_range')):= NA] %>% 
+    .[forecast_range == 0 ,  paste0('forecast', c('_lb', '_ub', '_range')):= NA] %>% 
+    .[,c('val_1', 'val_2') := NULL] %>%
+    
+    ## remove forecasts that appear after the fact and those that are over a year away 
+    .[, end_of_period := ymd(paste(prd_yr, prd_mon, 1, sep = "-")) %m+% months(1) - days(1)] %>% 
+    .[fcst_ann_date <= end_of_period & end_of_period - fcst_ann_date < 365] %>% .[,end_of_period := NULL] 
   
-  ## clean up how the forecast is reported 
-  .[,forecast := apply(.SD, 1, mean, na.rm = TRUE), .SDcols = c('val_1','val_2')] %>% 
-  .[!is.na(val_2), `:=`(forecast_lb = val_1, forecast_ub = val_2, forecast_range = val_2 - val_1)] %>% 
-  .[forecast_range < 0, paste0('forecast', c('', '_lb', '_ub', '_range')):= NA] %>% 
-  .[forecast_range == 0 ,  paste0('forecast', c('_lb', '_ub', '_range')):= NA] %>% 
-  .[,c('val_1', 'val_2') := NULL] %>%
+  ## mark the first / last forecast 
+  setorder(IBES_forecast_data, ibes_ticker, measure, prd_yr, fcst_ann_date)
+  IBES_forecast_data[, `:=`(first_forecast = .I == .I[1], last_forecast = .I == .I[.N]), by = c('ibes_ticker', 'measure', 'prd_yr')]
   
-  ## remove forecasts that appear after the fact and those that are over a year away 
-  .[, end_of_period := ymd(paste(prd_yr, prd_mon, 1, sep = "-")) %m+% months(1) - days(1)] %>% 
-  .[fcst_ann_date <= end_of_period & end_of_period - fcst_ann_date < 365] %>% .[,end_of_period := NULL] 
+  ###### ACTUAL VALUES OF THE FORECASTED VARIABLES 
+  #https://wrds-www.wharton.upenn.edu/pages/get-data/lseg-ibes/ibes-academic/detail-history/actuals/  
+  IBES_actual = import_file("1) data/11_parameter_calibration/raw/1_IBES_actuals_raw.csv") %>% rename_with(~tolower(.)) %>% 
+    .[, pends := as.Date(pends)] %>% .[, `:=`(prd_yr = year(pends), prd_mon = month(pends))]  %>%
+    rename(ibes_ticker= ticker, realized_value = value) %>% 
+    distinct(., ibes_ticker, prd_yr, prd_mon, measure, .keep_all = T) %>% 
+    select('ibes_ticker','pends', 'prd_yr', 'prd_mon', 'measure', 'realized_value') 
+  
+  IBES_initial_combined = merge(IBES_forecast_data, IBES_actual,  by = c('ibes_ticker', 'prd_yr', 'prd_mon', 'measure')) %>% 
+    .[, forecast_horizon := as.numeric(pends - fcst_ann_date)] %>% 
+    .[, fiscal_year := ifelse(prd_mon >5, prd_yr, prd_yr - 1)] %>%
+    .[!is.na(ibes_ticker)] %>% 
+    .[, pstart := pends %m-% years(1) + days(1)] %>% 
+    select(ibes_ticker, fiscal_year,pstart, pends, measure, curr, units, con_fil(., 'forecast'), realized_value)
+  
+  ### Deflate and rescale values 
+  vars_to_deflate = c("analyst_forecast_mean","forecast", "forecast_lb", "forecast_ub", "forecast_range", "realized_value")
+  IBES_initial_combined = deflate_values_us(IBES_initial_combined, vars_to_deflate, 'pends') %>% 
+    .[, (vars_to_deflate) := lapply(.SD, function(x) x*1e6), .SDcols = vars_to_deflate]  %>% 
+    
+  ## Generate the forecast errors 
+  .[, `:=`(analyst_forecast_error = realized_value - analyst_forecast_mean,
+           firm_forecast_error = realized_value - forecast)] %>% 
+  mutate(across(con_fil(.,'forecast_error'), ~abs(.), .names = 'abs_{col}')) 
 
-## mark the first / last forecast 
-setorder(IBES_forecast_data, ibes_ticker, measure, prd_yr, fcst_ann_date)
-IBES_forecast_data[, `:=`(first_forecast = .I == .I[1], last_forecast = .I == .I[.N]), by = c('ibes_ticker', 'measure', 'prd_yr')]
-
-###### ACTUAL VALUES OF THE FORECASTED VARIABLES 
-#https://wrds-www.wharton.upenn.edu/pages/get-data/lseg-ibes/ibes-academic/detail-history/actuals/  
-IBES_actual = import_file("1) data/11_parameter_calibration/raw/1_IBES_actuals_raw.csv") %>% rename_with(~tolower(.)) %>% 
-  .[, pends := as.Date(pends)] %>% .[, `:=`(prd_yr = year(pends), prd_mon = month(pends))]  %>%
-  rename(ibes_ticker= ticker, realized_value = value) %>% 
-  distinct(., ibes_ticker, prd_yr, prd_mon, measure, .keep_all = T) %>% 
-  select('ibes_ticker','pends', 'prd_yr', 'prd_mon', 'measure', 'realized_value') 
-
-IBES_initial_combined = merge(IBES_forecast_data, IBES_actual,  by = c('ibes_ticker', 'prd_yr', 'prd_mon', 'measure')) %>% 
-  .[, forecast_horizon := as.numeric(pends - fcst_ann_date)] %>% 
-  .[, fiscal_year := ifelse(prd_mon >5, prd_yr, prd_yr - 1)] %>%
-  .[!is.na(ibes_ticker)] %>% 
-  .[, pstart := pends %m-% years(1) + days(1)] %>% 
-  select(ibes_ticker, fiscal_year,pstart, pends, measure, curr, units, con_fil(., 'forecast'), realized_value)
 
   write_parquet(IBES_initial_combined, "1) data/11_parameter_calibration/raw/2_IBES_forecast_plus_actuals_plus_birth_raw.parquet")
 }
@@ -65,75 +76,65 @@ IBES_initial_combined = merge(IBES_forecast_data, IBES_actual,  by = c('ibes_tic
 # Import compustat data --------------------------------------------------------
 importing_compustat = F
 if (importing_compustat){
+
+
+##### https://wrds-www.wharton.upenn.edu/pages/get-data/linking-suite-wrds/ibes-crsp-link/
+ibes_crsp_link = import_file('1) data/11_parameter_calibration/raw/3_crsp_ibes_crosswalk.csv') %>%
+  rename(ibes_ticker = TICKER) %>% distinct(ibes_ticker, PERMNO) %>% remove_if_NA('PERMNO', 'ibes_ticker')
+
+##### https://wrds-www.wharton.upenn.edu/pages/get-data/center-research-security-prices-crsp/annual-update/crspcompustat-merged/fundamentals-annual/
+vars_to_deflate = gpaste('compustat_', c('rev', 'capital', 'investment', 'wages'))
+compustat_dta =  import_file('1) data/11_parameter_calibration/raw/4_compustat_data_raw.csv') %>% 
+  rename(compustat_capital = ppent, compustat_rev = sale, compustat_investment = capx,  fiscal_yr_end_month = fyr,
+         compustat_emp = emp, compustat_wages = xlr, PERMNO = LPERMNO, fiscal_year = fyear) %>% 
+  remove_if_NA('PERMNO') %>% 
+  .[, naics := sprintf("%06d", as.integer(naics))] %>% .[, naics_2d := substr(naics,1,2)] %>% 
+  .[, fiscal_yr_enddate := ymd(paste(fiscal_year, fiscal_yr_end_month, 1, sep = "-")) %m+% months(1) - days(1)] %>% 
+  .[, fiscal_yr_startdate := fiscal_yr_enddate %m-% years(1) + days(1)] %>% 
   
-  ##### https://wrds-www.wharton.upenn.edu/pages/get-data/linking-suite-wrds/ibes-crsp-link/
-  ##### https://wrds-www.wharton.upenn.edu/pages/get-data/center-research-security-prices-crsp/annual-update/crspcompustat-merged/fundamentals-annual/
-  compustat_dta = merge(
-    
-    ### crsp to ibes data 
-    import_file('1) data/11_parameter_calibration/raw/3_crsp_ibes_crosswalk.csv') %>%
-      rename(ibes_ticker = TICKER) %>% distinct(ibes_ticker, PERMNO) %>% remove_if_NA('PERMNO', 'ibes_ticker'),
-    
-    ### crsp x compustat data 
-    import_file('1) data/11_parameter_calibration/raw/4_compustat_data_raw.csv') %>% 
-      rename(compustat_capital = ppent, compustat_rev = sale, compustat_investment = capx,  fiscal_yr_end_month = fyr,
-             compustat_emp = emp, compustat_wages = xlr, PERMNO = LPERMNO, fiscal_year = fyear) %>% 
-      remove_if_NA('PERMNO') %>% 
-      .[, naics := sprintf("%06d", as.integer(naics))] %>% .[, naics_2d := substr(naics,1,2)] %>% 
-      .[, fiscal_yr_enddate := ymd(paste(fiscal_year, fiscal_yr_end_month, 1, sep = "-")) %m+% months(1) - days(1)] %>% 
-      .[, fiscal_yr_startdate := fiscal_yr_enddate %m-% years(1) + days(1)] %>% 
-      
-      ### discard obs with missing or neg rev, wages, or emp
-      .[!(is.na(compustat_emp) | compustat_emp <=0) ] %>% 
-      .[!(is.na(compustat_rev) | compustat_rev <=0) ] %>% 
-      .[!(is.na(compustat_capital) | compustat_capital <=0)] %>%
-      
-      ## select interest vars  
-      select(PERMNO, cusip, naics, fiscal_year,fiscal_yr_startdate, fiscal_yr_enddate, compustat_rev,compustat_capital, compustat_investment, compustat_emp, compustat_wages, ipodate) %>% 
-      distinct(PERMNO, fiscal_year, .keep_all = T),
-    by = 'PERMNO') %>% .[,finan_or_util := substr(naics, 1, 2) %in% c("52", "22")] %>% 
+  ### discard obs with missing or neg rev, wages, or emp
+  .[!(is.na(compustat_emp) | compustat_emp <=0) ] %>% 
+  .[!(is.na(compustat_rev) | compustat_rev <=0) ] %>% 
+  .[!(is.na(compustat_capital) | compustat_capital <=0)] %>%
+  
+  ## select interest vars  
+  select(PERMNO, cusip, naics, naics_2d, fiscal_year,fiscal_yr_startdate, fiscal_yr_enddate, compustat_rev,compustat_capital, compustat_investment, compustat_emp, compustat_wages, ipodate) %>% 
+  distinct(PERMNO, fiscal_year, .keep_all = T) %>% 
+  
+  ## deflate nominal values and convert from millions to actual 
+  deflate_values_us(., vars_to_deflate, 'fiscal_yr_enddate') %>% 
+  .[, (vars_to_deflate) := lapply(.SD, function(x) x*1e6), .SDcols = vars_to_deflate] %>% 
+  
+  ## generate the rolling variance of log sales 
+  .[, log_compustat_rev := asinh(compustat_rev)] %>% 
+  unbalanced_lag(., 'PERMNO', 'fiscal_year', 'log_compustat_rev', 1:5) %>% 
+  .[, log_compustat_rev_var_prior5 := apply(.SD, 1, var, na.rm = TRUE), .SDcols = paste0('log_compustat_rev_lag', 1:5)] %>% 
+  .[, log_compustat_rev_var_prior5_strict := apply(.SD, 1, var), .SDcols = paste0('log_compustat_rev_lag', 1:5)] %>% 
+  .[, log_compustat_rev_var_prior3 := apply(.SD, 1, var, na.rm = TRUE), .SDcols = paste0('log_compustat_rev_lag', 1:3)] %>% 
+  .[, log_compustat_rev_var_prior_3_strict := apply(.SD, 1, var), .SDcols = paste0('log_compustat_rev_lag', 1:3)] %>% 
+  select(-all_of(con_fil(con_fil(., 'log_compustat_rev'),'prior', inc = F))) %>% 
+  
+  #flag finance and utilities for removal 
+  .[,finan_or_util := naics_2d %in% c("52", "22")]
+
+compustat_combined = merge(compustat_dta, ibes_crsp_link, by= 'PERMNO', all.x = T) %>% 
     .[, count := .N, by = .(PERMNO, fiscal_year)] %>% .[count ==1] %>% .[,count := NULL] 
   
-  write_parquet(compustat_dta, '1) data/11_parameter_calibration/raw/5_compustat_data_initial_processed.parquet')
+  write_parquet(compustat_combined, '1) data/11_parameter_calibration/raw/5_compustat_data_initial_processed.parquet')
 }
 
 # combine and clean financial data -----------------------------------------------------------------
-combining_financials = F
+combining_financials = T
 if (combining_financials){
 IBES = import_file("1) data/11_parameter_calibration/raw/2_IBES_forecast_plus_actuals_plus_birth_raw.parquet")
 compustat = import_file('1) data/11_parameter_calibration/raw/5_compustat_data_initial_processed.parquet')
-vars_to_deflate = c("analyst_forecast_mean","forecast", "forecast_lb", "forecast_ub", "forecast_range", "realized_value",
-                    "compustat_rev", "compustat_capital", "compustat_investment", "compustat_wages")
-
-### DEFLATOR DATA 
-getSymbols("GDPDEF", src = "FRED")
-deflator_dta = as.data.table(GDPDEF) %>% rename_with(~c('date', 'gdp_def')) %>% 
-  complete(date = seq(min(date), max(date), by = "day"))  %>% 
-  fill(gdp_def, .direction = "down") %>% as.data.table()
-base_deflator_val = deflator_dta[date == as.Date('2025-01-01')][['gdp_def']]
-deflator_dta[, gdp_def := base_deflator_val/ gdp_def]
 
 ### MERGE AND CLEAN 
 financial_dta = merge(compustat,IBES, all = T,  by = c('ibes_ticker', 'fiscal_year')) %>% 
   .[is.na(fiscal_yr_enddate),  fiscal_yr_enddate := pends] %>% 
   .[is.na(fiscal_yr_startdate), fiscal_yr_startdate := pstart] %>% 
   .[!finan_or_util == T] %>% 
-  .[, first_or_no_forecast := is.na(forecast) | first_forecast == T] %>% 
-  merge(deflator_dta, by.x = 'fiscal_yr_enddate', by.y = 'date', all.x = T) %>% 
-  .[, (vars_to_deflate) := lapply(.SD, function(x) x*gdp_def), .SDcols = vars_to_deflate] %>% 
-  .[, (vars_to_deflate) := lapply(.SD, function(x) x*1e6), .SDcols = vars_to_deflate] %>% 
-  
-  ## Generate the forecast errors 
-  .[, `:=`(analyst_forecast_error = realized_value - analyst_forecast_mean,
-           firm_forecast_error = realized_value - forecast)] %>% 
-  mutate(across(con_fil(.,'forecast_error'), ~abs(.), .names = 'abs_{col}')) 
-
-  ### generate misallocation metrics 
-  alpha = 2/3
-  financial_dta = financial_dta[, `:=`(
-    tfpr = compustat_rev / (compustat_emp^alpha* compustat_capital^(1-alpha)),
-    mrpl = compustat_rev /compustat_emp,
-    mrpk = compustat_rev /compustat_capital)]
+  .[,first_or_no_forecast := is.na(first_forecast) | first_forecast == T]
   
   ### # IBES birth (and industry group) match + age vars 
   ibes_birth_ages = wrds_query("SELECT item6003 AS firm_name, item6038 AS ibes_ticker, item6008 AS isin, item6011 AS industry_group,
@@ -301,7 +302,7 @@ if(importing_subsidiary_role){
 }
 
 # generate combined dataset -------------------------------------------------------------------------
-combining_dta = F
+combining_dta = T
 if(combining_dta){
 role_dta = rbindlist(list(import_file('1) data/11_parameter_calibration/raw/6_parent_firm_role_dta.parquet')))
 financial_dta = import_file("1) data/11_parameter_calibration/clean/1_cleaned_financial_dta.parquet") %>% .[,idx := .I]

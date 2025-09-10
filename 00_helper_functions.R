@@ -517,6 +517,26 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
 }
 
 # misc --------------------------------------------------------------------
+deflate_values_us = function(df, value_vars, date_var, replace = T){
+  ### DEFLATOR DATA 
+  getSymbols("GDPDEF", src = "FRED")
+  deflator_dta = as.data.table(GDPDEF) %>% rename_with(~c('date', 'gdp_def')) %>% 
+    complete(date = seq(min(date), max(date), by = "day"))  %>% 
+    fill(gdp_def, .direction = "down") %>% as.data.table()
+  base_deflator_val = deflator_dta[date == as.Date('2025-01-01')][['gdp_def']]
+  deflator_dta[, gdp_def := base_deflator_val/ gdp_def]
+  
+  if (replace == T){
+    df = merge(df, deflator_dta, by.x = date_var, by.y ='date', all.x = T) %>%
+      .[, (value_vars) := lapply(.SD, function(x) x*gdp_def), .SDcols = value_vars]
+  }else{
+    df = merge(df, deflator_dta, by.x = date_var, by.y ='date', all.x = T) %>%
+      .[, (paste0(value_vars,'_deflated')) := lapply(.SD, function(x) x*gdp_def), .SDcols = value_vars]  
+  }
+  df[,gdp_def := NULL]
+  return(df)
+}
+
 get_largest_polygon = function(geom){ 
   parts = st_cast(geom, 'POLYGON')
   areas = st_area(parts)
