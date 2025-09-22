@@ -3,7 +3,7 @@ packages = c('data.table', 'haven', 'readxl', 'openxlsx', 'stringr', 'readr', 'd
              'tidyverse', 'janitor', 'Matrix','parallel', 'bigmemory','bit64','tmvtnorm',
              'arrow', 'fixest', 'countrycode', 'survival', 'knitr', 'parallel', 'patchwork', 'scales', 'duckdb', 
              'truncnorm','sf', 'rnaturalearth', 'geosphere', 'giscoR', 'googledrive', 'R.matlab',
-             'DBI', 'RPostgres', 'quantmod')
+             'DBI', 'RPostgres', 'quantmod', 'splines')
 lapply(packages, function(package){tryCatch({library(package,character.only = T)}, error = function(cond){
   install.packages(package); library(package, character.only = T)
 })})
@@ -62,10 +62,11 @@ dummy_version = getwd() != "C:/Users/Public/Documents/Big data Project";
       assign(path, gsub('3) output', '1a) dummy data/99_fake_output', get(path)))
     }}
   lapply(c(raw_output_dir, finished_output_dir, dummy_data_dir),function(x) suppressWarnings(dir.create(x, recursive = T)))
-
+  us_output_path = '3) output/us_output/'
 
 # SET IMPORTANT PARAMETER VALUES  -----------------------------------------------------------------------
-year_range = 2008:2021
+year_range = c(2008:2021)
+us_year_range = c(2008:2024)
 set.seed(43)
 
 

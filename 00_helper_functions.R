@@ -1,5 +1,5 @@
 # Table Cleanup ----------------------------------------------------
-reg_command = function(dataset, dep_var,ind_var, controls ="", fe,iv ="", cluster, family = 'feols',
+reg_command = function(dataset, dep_var,ind_var, controls ="", fe,iv ="", cluster, family = 'feols', weight = '',
                        time_var = ""){
   
   if(iv ==""){
@@ -15,6 +15,7 @@ reg_command = function(dataset, dep_var,ind_var, controls ="", fe,iv ="", cluste
     command = gsub('feols\\(', 'feglm(', command)
     command =  paste0(substr(command, 1, nchar(command) - 1), ", family = '", family, "')")
   }
+  if(weight!='') command = gsub("\\)", paste0(", weights = ~", weight,")"), command)
   return(command)
 }
 extract_model_vars <- function(cmd_list){
@@ -152,7 +153,60 @@ pause_for_check = function(enforce){
   ans <- readline('press any key to acknowledge: ')
   if (nzchar(ans)) return(ans)
   }
-}}
+  }}
+
+spline_analysis  = function(dta,spline_reg,int_var, running_var){
+  
+  running_grid = seq(NA_min(dta[[running_var]]), NA_max(dta[[running_var]]), length.out = 150)
+  nd = data.table(id = 1:length(running_grid)) %>% .[,con_fil(names(spline_reg$coefficients), int_var, running_var, inc =F ) :=0] %>% 
+    .[,(int_var) := 1] %>% .[,(running_var) := running_grid]
+  
+  # model matrix for the fitted formula (FE are absorbed, so no issues)
+  X <- model.matrix(spline_reg, nd)
+  
+  # pull coefficients & vcov
+  b <- coef(spline_reg)
+  V <- vcov(spline_reg)
+  
+  # identify the relevant coefficients
+  nm_beta1 = int_var
+  escape_rx <- function(x) gsub("([][{}()+*^$.|?\\-])", "\\\\\\1", x)
+  int_rx <- escape_rx(int_var)        # e.g. "log_parent_comp_data"
+  run_rx <- escape_rx(running_var)    # e.g. "log_compustat_rev"
+  # match:  ^<int_var>[:*]bs(<running_var> ... )
+  pat <- paste0("^", int_rx, "[:*]bs\\(", run_rx, ".*\\)")
+  nm_inter <- grep(pat, names(b), value = TRUE, perl = TRUE)
+  
+  
+  # check
+  stopifnot(nm_beta1 %in% names(b), length(nm_inter) >= 2)
+  
+  # grab the columns in X corresponding to the interaction; with log_data = 1 these equal the spline basis at each rev
+  Z <- X[, nm_inter, drop = FALSE]
+  
+  # marginal effect and delta-method SE:
+  # me = beta1 + Z %*% beta_inter
+  me <- as.numeric(b[nm_beta1] + Z %*% b[nm_inter])
+  
+  # Var(me) = Var(beta1) + Z Var(beta_inter) Z' + 2 Z Cov(beta_inter, beta1)
+  V11 <- V[nm_beta1, nm_beta1, drop = TRUE]
+  V22 <- V[nm_inter, nm_inter, drop = FALSE]
+  V12 <- V[nm_inter, nm_beta1, drop = FALSE]   # (k x 1)
+  se <- sqrt( V11 + rowSums((Z %*% V22) * Z) + 2 * as.numeric(Z %*% V12) )
+  
+  df <- data.table(me = me, lo = me - 1.96 * se,hi = me + 1.96 * se) %>% .[,(running_var) := running_grid]
+  
+  p <- ggplot(df, aes(df[[running_var]], me)) +
+    geom_hline(yintercept = 0, linetype = 2) +
+    geom_ribbon(aes(ymin = lo, ymax = hi), alpha = 0.20) +
+    geom_line() +
+    geom_rug(data = dta, aes(x = dta[[running_var]], y = NULL), sides = "b", alpha = 0.25) +
+    labs(x = running_var, y = paste0("∂ dep_var / ∂ ", int_var)) + theme_minimal()
+  return(p)
+}
+
+
+
 display_value = function(x, parens = F){
   vapply(x, function(single_x) { 
     if (is.na(single_x)){out = "NA"
@@ -293,7 +347,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
         rownames(temp_model) = names(model_inputs[[i]]$coefficients) 
       temp_model = temp_model %>%
         mutate(across(c(coef, `se(coef)`), ~display_value(.), .names = "{col}_display"),
-               coef_display = paste0(coef_display, case_when(`Pr(>|z|)` < .001 ~ "***",`Pr(>|z|)` < .01 ~'**',`Pr(>|z|)` < .05 ~ "*", T ~ "")),
+               coef_display = paste0(coef_display, case_when(`Pr(>|z|)` < .001 ~ "***",`Pr(>|z|)` < .01 ~'**',`Pr(>|z|)` < .05 ~ "*",`Pr(>|z|)` <.1 ~"+",T ~ "")),
                se_display = paste0('(', `se(coef)_display`, ')'))
       temp_model$coef_name = rownames(temp_model)
         }}
@@ -337,7 +391,7 @@ format_table = function(model_inputs = NA,summary_table_input = NA,label, coef_n
     table = c(intro_rows, table[-1], end_rows) %>% gsub('toprule', 'hline', .) %>%
       gsub('bottomrule', 'hline',.)
     table =  gsub('\\( ','(', table )
-    p_values = paste0("\\multicolumn{", num_columns+1,"}{l}{\\scriptsize{$^{***}p<0.001$; $^{**}p<0.01$; $^{*}p<0.05$}}")
+    p_values = paste0("\\multicolumn{", num_columns+1,"}{l}{\\scriptsize{$^{***}p<0.001$; $^{**}p<0.01$; $^{*}p<0.05$; $^{+}p<0.1$}}")
     table = append(table, '\\hline', after =  which(grepl("& \\(1\\) & \\(2\\)", table))[1] )
     table = append(table, '\\hline', after = which(grepl('Num. Obs', table))[1]-1)
     table = append(table, p_values, after = which(grepl('Num. Obs', table))[1]+1)
@@ -1058,4 +1112,10 @@ trend_metrics<-function(dt, vars_to_trend, vars_weight, time_var){
   
 }
 
+windsorize = function(x, lb, ub){
+  lb_ub = quantile(x, na.rm = T, c(lb,ub))
+  x[x<lb_ub[1]] = lb_ub[1]
+  x[x>lb_ub[2]] = lb_ub[2]
+  return(x)
+}
 
