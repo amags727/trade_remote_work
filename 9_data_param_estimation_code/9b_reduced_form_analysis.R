@@ -71,8 +71,9 @@ base_controls = paste(c("", 'log_parent_comp_total', 'log_forecast_horizon','par
 
 additional_controls = c("","log_compustat_rev", 'log_comp_stem + log_comp_non_data_rnd') %>% c(., paste(.,collapse = "+"))
 base_command = reg_command('combined_dta[in_event_study_data == T]', 
-                           'abs_firm_log_forecast_error', 'sunab(extensive_hire_cohort_data,event_study_yr_5y_trim_data)', base_controls,
+                           'abs_firm_log_forecast_error', 'sunab(extensive_hire_cohort_data,event_study_yr_3y_trim_data)', base_controls,
                            fe = "| ibes_ticker + fiscal_year", cluster = 'ibes_ticker') 
+
 iplot(eval(parse(text= base_command)))
 
 
@@ -118,9 +119,9 @@ ggsave(paste0(us_output_path, '4_residual_graph.png'),residual_graph, width = 6,
 combined_dta = import_file("1) data/11_parameter_calibration/clean/2_cleaned_finance_plus_roles.parquet") %>% 
   .[usfirm == 1 & first_forecast == T] %>%
   .[,initial_over_opt := log_fy_init_analyst_forecast > asinh(realized_value)] %>% 
-  .[, leave_out_industry_mean_forecast_error_pct := ifelse(.N >2, (NA_sum(abs_firm_log_forecast_error) - abs_firm_log_forecast_error)/(.N-1), NA), by = .(industry_group, fiscal_year)] %>% 
-  unbalanced_lag(.,'ibes_ticker', 'fiscal_year', 'realized_value', 1)
-
+  .[, leave_out_industry_mean_forecast_error_pct := 
+      ifelse(.N >2, (NA_sum(abs_firm_log_forecast_error) - abs_firm_log_forecast_error)/(.N-1), NA), by = .(industry_group, fiscal_year)]  
+  
 parent_controls <- paste("", "log_parent_comp_total", "parent_share_empl_college", "parent_avg_prestige",
                           "log_forecast_horizon", "log_revel_age", "log_abs_analyst_forecast_error", sep = " + ")
 additional_controls = c('', 'log_fy_init_analyst_forecast')
@@ -171,7 +172,7 @@ for (i in 5:6){
 ### RUN SPLINE REGRESSIONS 
 forecast_error_spline_wrapper = function(dta,ind_var, running_var, fe){
 bottom_top = quantile(dta[[running_var]], c(.01,.99), na.rm = T)
-#dta = dta[get(running_var) > bottom_top[1] & get(running_var) < bottom_top[2]]
+dta = dta[get(running_var) > bottom_top[1] & get(running_var) < bottom_top[2]]
 command =  gsub('comp_data',paste0("comp_data*bs(",running_var,", df = 5)"), base_prt_command) %>%
            gsub('combined_dta', 'dta',.)
 if(ind_var == 'pct')command = gsub("log_abs_(firm|analyst)", "abs_\\1_log", command)

@@ -82,11 +82,10 @@ if (importing_IBES){
   ## Generate the forecast errors 
   .[, `:=`(abs_firm_log_forecast_error = abs(asinh(realized_value) - abs(asinh(forecast))),
            abs_analyst_log_forecast_error = abs(asinh(realized_value) - abs(asinh(analyst_forecast_mean))),
-           analyst_forecast_error = realized_value - analyst_forecast_mean,
-           firm_forecast_error = realized_value - forecast)] %>% 
-  mutate(across(con_fil(con_fil(.,'forecast_error'),'abs', inc = F), ~abs(.), .names = 'abs_{col}')) %>% 
-  mutate(across(con_fil(con_fil(.,'abs'),'log', inc = F), ~./ realized_value, .names = 'pct_{col}')) 
+           abs_analyst_forecast_error = abs(realized_value - analyst_forecast_mean),
+           abs_firm_forecast_error = abs(realized_value - forecast))] 
   
+ 
   write_parquet(IBES_initial_combined, "1) data/11_parameter_calibration/raw/2_IBES_forecast_plus_actuals_plus_birth_raw.parquet")
 }
 # Import compustat data --------------------------------------------------------
@@ -257,9 +256,8 @@ financial_dta = merge(compustat,IBES, all = T,  by = c('ibes_ticker', 'fiscal_ye
   merge(ma_dta, all.x = T, by = c('fiscal_year', 'gvkey')) %>% 
   .[is.na(fy_MA_deals), fy_MA_deals := 0] %>% 
   .[fy_MA_deals ==0, fy_MA_deal_value := 0] %>% 
-  .[,log_fy_MA_deal_value := asinh(fy_MA_deal_value)]
+  .[,log_fy_MA_deal_value := asinh(fy_MA_deal_value)] 
   
-
   ### # IBES birth (and industry group) match + age vars 
   ibes_birth_ages = wrds_query("SELECT item6003 AS firm_name, item6038 AS ibes_ticker, item6008 AS isin, item6011 AS industry_group, 
                             item18272 AS birth_date, item18273 AS incorporation_date FROM trws.wrds_ws_company WHERE item6038 is not NULL") %>% 
@@ -269,8 +267,33 @@ financial_dta = merge(compustat,IBES, all = T,  by = c('ibes_ticker', 'fiscal_ye
     .[,birth_year := year(case_when(!is.na(birth_date) ~ birth_date,
                                     !is.na(incorporation_date) ~ incorporation_date,
                                     !is.na(ipodate) ~ ipodate))] %>% 
-    .[fiscal_year >= birth_year,age := fiscal_year - birth_year] 
+    .[fiscal_year >= birth_year,age := fiscal_year - birth_year]  
+    
+  
+    ibes_var_dta= financial_dta[,log_realized_value := asinh(realized_value)] %>% 
+    .[first_forecast == T & !is.na(ibes_ticker)] %>% 
+    unbalanced_lag(., 'ibes_ticker', 'fiscal_year', c('log_realized_value', 'abs_firm_log_forecast_error'), c(1:4)) %>%
+    .[, abs_firm_log_forecast_error_prior3 := apply(.SD,1, NA_mean), .SDcols = paste0('abs_firm_log_forecast_error_lag',c(1:3))] %>% 
+    .[, ibes_5y_log_rev_var := apply(.SD, 1, NA_var), .SDcols = paste0('log_realized_value',c("", paste0("_lag", 1:4)))]  %>% 
+    .[, industry_ibes_5y_log_rev_var := NA_mean(ibes_5y_log_rev_var), by = .(industry_group, fiscal_year)] %>% 
+      select(ibes_ticker, fiscal_year, con_fil(.,'log_rev_var','prior3'))
+   
+    compustat_var_dta= financial_dta[,log_compustat_rev := asinh(compustat_rev)] %>% 
+      .[first_forecast == T & !is.na(gvkey)] %>% 
+      unbalanced_lag(., 'gvkey', 'fiscal_year', 'log_compustat_rev', c(1:4)) %>%
+      .[, compustat_5y_log_rev_var := apply(.SD, 1, NA_var), .SDcols = paste0('log_compustat_rev',c("", paste0("_lag", 1:4)))]  %>% 
+      .[, industry_compustat_5y_log_rev_var := NA_mean(compustat_5y_log_rev_var), by = .(industry_group, fiscal_year)] %>% 
+      select(gvkey, fiscal_year, con_fil(.,'log_rev_var'))
+ 
+     financial_dta= financial_dta %>% 
+       merge(ibes_var_dta, all.x = T, by = c( 'ibes_ticker', 'fiscal_year')) %>%
+       merge(compustat_var_dta, all.x = T, by = c('gvkey', 'fiscal_year'))
+    
+    
+    
+  
 
+    
 ### ADD THE RCID DATA 
 rcid_matching =  wrds_query("SELECT rcid,child_rcid, ultimate_parent_rcid, year_founded, isin, cusip,
                             hq_country as revel_country, year_founded as revel_birth_year 
@@ -581,8 +604,8 @@ combined_dta = merge(financial_dta, parent_role_dta, all.x = T, by = c('rcid', '
    model_dta = model_dta[is.na(empl_inac_weight), empl_inac_weight := median_weight] %>% 
      select('gvkey','ibes_ticker','fiscal_year', 'drop_parent', 'empl_inac_weight')
    
-   combined_dta = merge(combined_dta, model_dta, all.x = T) %>% 
-     .[drop_parent == T,con_fil(con_fil(., 'parent'), 'ultimate', 'drop', inc = F) := NA]  
+   # combined_dta = merge(combined_dta, model_dta, all.x = T) %>% 
+   #  .[drop_parent == T,con_fil(con_fil(., 'parent'), 'ultimate', 'drop', inc = F) := NA]  
 
   
    # ### drop top and bottom 1 percent outliers in terms of rcid employee count 
