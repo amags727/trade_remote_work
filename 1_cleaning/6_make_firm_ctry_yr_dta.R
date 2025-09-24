@@ -72,25 +72,65 @@ if (making_extended_grav){
 }
 
 # import files  --------------------------------------------------------
-network_closeness = import_file(extended_grav_path, col_select = c('ctry_num','firmid_num','year', 'export_rev_customs')) %>%
+making_network_closeness = F
+if (making_network_closeness){
   
-  ## add domestic revenue 
-  rbind(import_file(firm_yr_path, col_select = c('dom_turnover', 'firmid_num', 'year')) %>% .[dom_turnover > 0] %>%
-          rename(export_rev_customs =dom_turnover) %>% .[,ctry_num := 0])  %>%
+  extended_grav = import_file(extended_grav_path, col_select=c('ctry_num', 'firmid_num')); gc()
   
-  ## for each firm-destination-year add all the other destinations the firm has in network 
-  merge(.[export_rev_customs > 0] %>% rename(d_ctry_num = ctry_num, d_export_rev_customs = export_rev_customs) %>%
-          .[,c('firmid_num', 'year', 'd_ctry_num', 'd_export_rev_customs')], by = c('firmid_num', 'year'), allow.cartesian = T) %>% 
-  rename(o_ctry_num = ctry_num) %>% .[o_ctry_num != d_ctry_num & o_ctry_num != 0] %>% 
+  n_groups=10
+  unique_firmids <- data.table(firmid_num=unique(extended_grav$firmid_num)) %>%
+    .[, firm_group := ntile(firmid_num, n_groups)] 
   
-  ## merge in distance data and calc weighted mean 
-  merge(import_file(similiarity_dir, '/outputs/overall_distance_data.csv'), by = con_fil(.,'ctry')) %>% 
-  .[,france := d_ctry_num == 0 ] %>% 
-  .[, .(network_closeness_inc_france = asinh(weighted.mean(distance_km, d_export_rev_customs)),
-        network_closeness_excl_franc = asinh(weighted.mean(distance_km[!france], d_export_rev_customs[!france]))),  by = .(o_ctry_num,firmid_num, year)] %>% 
-  rename(ctry_num =o_ctry_num)
+  rm(extended_grav); gc()
+  network_closeness_path<-"1) data/18_network_closeness/"
+  suppressWarnings(dir.create(network_closeness_path))
+  
+  for(i in 1:n_groups){
+    
+    print(i)
+    temp_firmids <- unique(unique_firmids[firm_group==i]$firmid_num)
+    
+    network_closeness = import_file(extended_grav_path, col_select=c('ctry_num', 'firmid_num', 'year', 'export_rev_customs')) %>%
+      .[firmid_num %in% temp_firmids] %>%
+      
+      ## add domestic revenue
+      rbind(import_file(firm_yr_path, col_select = c('dom_turnover', 'firmid_num', 'year')) %>% .[dom_turnover >0] %>%
+              rename(export_rev_customs =dom_turnover) %>% .[,ctry_num := 0]) %>%
+      
+      ## for each firm-destination-year add all the other destinations the firm has in network
+      merge(.[export_rev_customs > 0] %>% rename(d_ctry_num = ctry_num, d_export_rev_customs = export_rev_customs) %>%
+              .[, c('firmid_num', 'year', 'd_ctry_num', 'd_export_rev_customs')], by=c('firmid_num', 'year'), allow.cartesian = T) %>%
+      rename(o_ctry_num = ctry_num) %>% .[o_ctry_num != d_ctry_num & o_ctry_num != 0] %>%
+      
+      ## merge in distance data and calc weighted mean
+      merge(import_file(similiarity_dir, '/outputs/overall_distance_data.csv'), by = con_fil(., 'ctry')) %>%
+      .[, france := d_ctry_num == 0] %>%
+      .[, .(network_closeness_inc_france = asinh(weighted.mean(distance_km, d_export_rev_customs)),
+            network_closeness_excl_franc = asinh(weighted.mean(distance_km[!france], d_export_rev_customs[!france]))), by = . (o_ctry_num,firmid_num, year)] %>%
+      rename(ctry_num = o_ctry_num)
+    
+    write_parquet(network_closeness, paste0(network_closeness_path, "tmp", i, ".parquet"))
+    rm(network_closeness); gc()
+    
+  }
+  
+  network_closeness<-data.table()
+  for(i in 1:n_groups){
+    network_closeness_temp<-import_file(paste0(network_closeness_path, "tmp", i, ".parquet"))
+    network_closeness<-rbind(network_closeness, network_closeness_temp, fill=T)
+    rm(network_closeness_temp); gc()
+  }
+  write_parquet(network_closeness, paste0(network_closeness_path, "newtwork_closeness.parquet"))
+  
+}
 
-extended_grav = import_file(extended_grav_path)
+network_closeness_path<-"1) data/18_network_closeness/"
+network_closeness <- open_dataset(paste0(network_closeness_path, "newtwork_closeness.parquet")) %>% collect()
+
+# extended_grav = import_file(extended_grav_path) THIS COMMAND FAILS BECAUSE OF MEMORY ISSUES
+extended_grav <- open_dataset(extended_grav_path)
+extended_grav <- extended_grav %>% collect()
+
 vars_to_any = gpaste(c('currently_export', 'nace_share_export', 'is_first_export_year','log_years_since_first_export_year'),'_customs')
 firm_yr = import_file(firm_yr_path) %>% rename_with(.cols = vars_to_any, ~paste0(., '_any_ctry')) %>% 
   select(c('firmid_num', 'year', 'NACE_BR', 'log_dom_turnover','avg_prestige_total', 'empl', 'empl_bin', 'young',
@@ -107,7 +147,7 @@ customs_age_data = import_file(firm_ctry_lvl_birth_path, col_select = c('firmid_
 # merge clean and output ------------------------------------------------
 vars_to_log = c('export_rev_customs', 'num_other_mkts', 'years_since_first_export_year', 'years_since_streak_start')
 output = merge(firm_yr, extended_grav, by = c('firmid_num', 'year')) %>% 
-  merge(network_closeness, all.x = T, by = c('firmid_num', 'year')) %>% 
+  merge(network_closeness, all.x=T, by=c('firmid_num', 'year', 'ctry_num')) %>%
   
   ## add age data 
   merge(age_data, by = c('firmid_num')) %>% 
@@ -129,6 +169,8 @@ output = merge(firm_yr, extended_grav, by = c('firmid_num', 'year')) %>%
   ## misc vars 
   .[,num_other_mkts := num_mkts - currently_export_customs] %>% 
   .[, paste0('log_', vars_to_log) := lapply(vars_to_log, function(x) asinh(get(x)))] 
+
+rm(network_closeness, firm_yr, extended_grav); gc()
 
 # add variance information ------------------------------------------------
 # generate measures of de-trended variance of each firm per year 
@@ -155,12 +197,24 @@ ctry_ind_var_temp = output[, .(ind_log_var = NA_sd(asinh(export_rev_customs_cond
 ctry_detrended_var_temp = output[, .(ctry_detrended_var_yr_to_yr = NA_mean(log_export_rev_customs_cond_detrended_var_wo_ctry_fe)), by = .(ctry_num,year)]  %>% 
   .[, ctry_detrended_var := NA_mean(ctry_detrended_var_yr_to_yr), by = ctry_num]
 
+rm(age_data, customs_age_data, models); gc()
+
+# THIS RUNS INTO MEMORY ISSUES
+# output = output %>% merge(ctry_group_var_temp , by ='ctry_num') %>% 
+#   merge(ctry_ind_var_temp, by ='ctry_num')  %>% 
+#   merge(ctry_detrended_var_temp, by = c('ctry_num', 'year'))
+
 # combine 
-output = output %>% merge(ctry_group_var_temp , by ='ctry_num') %>% 
-  merge(ctry_ind_var_temp, by ='ctry_num')  %>% 
-  merge(ctry_detrended_var_temp, by = c('ctry_num', 'year'))
+output =  merge(output, ctry_group_var_temp , by ='ctry_num')
+rm(ctry_group_var_temp); gc()
+output =  merge(output, ctry_ind_var_temp , by ='ctry_num')
+rm(ctry_ind_var_temp); gc()
+output =  merge(output, ctry_detrended_var_temp , by =c('ctry_num', 'year'))
+rm(ctry_detrended_var_temp); gc()
+
+
   
-# add churn information -----------------------------------------------------------------------
+ # add churn information -----------------------------------------------------------------------
 churn_temp = output[year < max(year_range) & year > min(year_range), .(
   ctry_entrance_rate_yr_to_yr = NA_mean(year == streak_start),
   ctry_exit_rate_yr_to_yr = NA_mean(year == streak_end),

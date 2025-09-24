@@ -35,9 +35,23 @@ base_command = reg_command(dataset = 'firm_yr', dep_var =  dep_vars, ind_var = '
 alt_1_base_command = gsub('log_comp_data \\+ log_comp_data_lag1',
                           'log_comp_data + log_comp_non_data_rnd + log_comp_data_lag1 + log_comp_non_data_rnd_lag1',
                           base_command)
+
 alt_2_base_command = gsub('log_comp_data \\+ log_comp_data_lag1',
                           'log_comp_data*log_comp_non_data_rnd + log_comp_data_lag1*log_comp_non_data_rnd_lag1',
                           base_command)
+
+alt_3_base_command = gsub('log_comp_data \\+ log_comp_data_lag1',
+                          'log_comp_non_data_rnd + log_comp_non_data_rnd_lag1',
+                          base_command)
+
+alt_4_base_command = gsub('log_comp_data \\+ log_comp_data_lag1',
+                          'log_comp_data + log_comp_stem + log_comp_data_lag1 + log_comp_stem_lag1',
+                          base_command)
+
+alt_5_base_command = gsub('log_comp_data \\+ log_comp_data_lag1',
+                          'log_comp_data*log_comp_stem + log_comp_data_lag1*log_comp_stem_lag1',
+                          base_command)
+
 
 
 
@@ -46,8 +60,11 @@ baseline_rev = data.table(dep_var = dep_vars, command = c(
   ## add BS versions 
   base_command,
   alt_1_base_command, 
-  alt_1_base_command 
-)) 
+  alt_2_base_command,
+  alt_3_base_command,
+  alt_4_base_command,
+  alt_5_base_command 
+  )) 
 
 
 
